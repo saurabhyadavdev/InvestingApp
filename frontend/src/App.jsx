@@ -1,59 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { fetchPortfolio } from './api.js';
+import ImportCSV from './components/ImportCSV.jsx';
+import PortfolioTable from './components/PortfolioTable.jsx';
+import AllocationCard from './components/AllocationCard.jsx';
 import './index.css';
-
-function getPLClass(pl) {
-  if (pl > 0) return 'pl-positive';
-  if (pl < 0) return 'pl-negative';
-  return 'pl-zero';
-}
-
-function PortfolioTable({ holdings }) {
-  if (holdings.length === 0) {
-    return (
-      <div className="empty-state">
-        <h2>No portfolio data yet</h2>
-        <p>Import your Zerodha or Trade Republic CSV to see holdings, P&L, and allocation breakdown.</p>
-      </div>
-    );
-  }
-
-  return (
-    <table>
-      <thead>
-        <tr>
-          <th>Ticker</th>
-          <th>Qty</th>
-          <th>Avg Buy</th>
-          <th>Current</th>
-          <th>P&amp;L</th>
-          <th>P&amp;L %</th>
-          <th>Currency</th>
-        </tr>
-      </thead>
-      <tbody>
-        {holdings.map((h) => (
-          <tr key={h.id || h.ticker}>
-            <td>{h.ticker}</td>
-            <td>{h.quantity}</td>
-            <td>{h.avg_buy?.toFixed(2)}</td>
-            <td>{h.current_price?.toFixed(2)}</td>
-            <td className={getPLClass(h.pl)}>{h.pl?.toFixed(2)}</td>
-            <td className={getPLClass(h.pl_pct)}>{h.pl_pct?.toFixed(2)}%</td>
-            <td>{h.currency}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
 
 export default function App() {
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const loadPortfolio = useCallback(() => {
+    setLoading(true);
+    setError(null);
     fetchPortfolio()
       .then((data) => {
         setPortfolio(data);
@@ -65,12 +24,19 @@ export default function App() {
       });
   }, []);
 
+  useEffect(() => {
+    loadPortfolio();
+  }, [loadPortfolio]);
+
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
+
+  const holdings = portfolio?.holdings || [];
+  const cashByBroker = portfolio?.cash_by_broker || {};
 
   return (
     <div className="page">
@@ -81,6 +47,13 @@ export default function App() {
         </div>
       </div>
 
+      {/* ImportCSV — always visible at top */}
+      <div className="portfolio-section">
+        <div className="section-title">Import Holdings</div>
+        <ImportCSV onImportSuccess={loadPortfolio} />
+      </div>
+
+      {/* Portfolio Table */}
       <div className="portfolio-section">
         <div className="section-title">Your Portfolio</div>
 
@@ -92,10 +65,24 @@ export default function App() {
           </div>
         )}
 
-        {!loading && !error && portfolio && (
-          <PortfolioTable holdings={portfolio.holdings || []} />
+        {!loading && !error && (
+          <PortfolioTable
+            holdings={holdings}
+            totalInr={portfolio?.total_inr ?? 0}
+            totalEur={portfolio?.total_eur ?? 0}
+          />
         )}
       </div>
+
+      {/* Allocation Card — shown when there are holdings */}
+      {!loading && !error && (
+        <div className="portfolio-section">
+          <AllocationCard
+            holdings={holdings}
+            cashByBroker={cashByBroker}
+          />
+        </div>
+      )}
     </div>
   );
 }

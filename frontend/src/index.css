@@ -161,3 +161,151 @@ h2 {
   border-radius: 4px;
   margin-bottom: 16px;
 }
+
+/* ---- ImportCSV ---- */
+.import-csv-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.import-csv-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-import {
+  background: var(--color-accent);
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  min-height: 40px;
+  transition: background 0.15s;
+}
+
+.btn-import:hover {
+  background: #0052A3;
+}
+
+.btn-import:active {
+  background: #004085;
+}
+
+.btn-import:disabled {
+  background: var(--color-border);
+  color: #999999;
+  cursor: not-allowed;
+}
+
+.import-status {
+  font-size: 13px;
+}
+
+.import-status--uploading {
+  color: var(--color-neutral);
+}
+
+.import-status--success {
+  color: var(--color-positive);
+  font-weight: 600;
+}
+
+.import-status--error {
+  color: var(--color-negative);
+}
+
+/* ---- PortfolioTable ---- */
+.portfolio-table-wrapper {
+  overflow-x: auto;
+}
+
+.portfolio-table {
+  min-width: 800px;
+}
+
+.portfolio-table tr {
+  height: 36px;
+}
+
+tfoot tr.summary-row td {
+  border-top: 2px solid var(--color-border);
+  background: var(--color-bg-card);
+}
+
+/* ---- AllocationCard ---- */
+.allocation-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+
+.allocation-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.allocation-section {
+  margin-bottom: 20px;
+}
+
+.allocation-section:last-child {
+  margin-bottom: 0;
+}
+
+.allocation-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.allocation-label {
+  width: 160px;
+  flex-shrink: 0;
+  color: var(--color-text-primary);
+}
+
+.allocation-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.allocation-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.allocation-pct {
+  width: 48px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.allocation-value {
+  width: 100px;
+  text-align: right;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.empty-text {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}

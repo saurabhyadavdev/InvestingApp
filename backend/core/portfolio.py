@@ -8,10 +8,13 @@ Supports:
 All SQLite inserts use parameterized ? placeholders — no f-string SQL.
 """
 import csv
+import logging
 import sqlite3
 import tempfile
 import os
 from typing import Union, IO
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +263,12 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
 
                 if total_units <= 0:
                     continue  # fully sold
+
+                if total_cost < 0:
+                    logger.warning(
+                        "Negative total_cost for ISIN %s — skipping (data integrity issue)", isin
+                    )
+                    continue
 
                 cost_per_unit = total_cost / total_units
                 asset_type = "etf" if "etf" in name.lower() else "equity"

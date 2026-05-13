@@ -3,6 +3,41 @@
  * All fetch errors bubble up as thrown Error instances.
  */
 
+export async function fetchIndices() {
+  const response = await fetch('/api/indices');
+  if (!response.ok) {
+    throw new Error(`Indices fetch failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchFX() {
+  const response = await fetch('/api/fx');
+  if (!response.ok) {
+    throw new Error(`FX fetch failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * setFXAlert — POST /api/fx/alert to persist EUR/INR alert threshold.
+ * @param {number} threshold - Alert threshold value (must be > 0)
+ * @returns {Promise<{alert_threshold: number, message: string}>}
+ */
+export async function setFXAlert(threshold) {
+  const response = await fetch('/api/fx/alert', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ threshold }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+    const detail = errorBody.detail || response.statusText;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return response.json();
+}
+
 export async function fetchPortfolio() {
   const response = await fetch('/api/portfolio');
   if (!response.ok) {

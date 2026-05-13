@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchPortfolio } from './api.js';
+import { fetchPortfolio, fetchIndices, fetchFX, setFXAlert } from './api.js';
 import ImportCSV from './components/ImportCSV.jsx';
 import PortfolioTable from './components/PortfolioTable.jsx';
 import AllocationCard from './components/AllocationCard.jsx';
+import IndicesCard from './components/IndicesCard.jsx';
+import FXCard from './components/FXCard.jsx';
 import './index.css';
 
 export default function App() {
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [indices, setIndices] = useState([]);
+  const [fx, setFx] = useState(null);
 
   const loadPortfolio = useCallback(() => {
     setLoading(true);
@@ -24,9 +29,32 @@ export default function App() {
       });
   }, []);
 
+  const loadIndices = useCallback(() => {
+    fetchIndices()
+      .then((data) => setIndices(data.indices || []))
+      .catch(() => setIndices([]));
+  }, []);
+
+  const loadFX = useCallback(() => {
+    fetchFX()
+      .then((data) => setFx(data))
+      .catch(() => setFx(null));
+  }, []);
+
   useEffect(() => {
     loadPortfolio();
-  }, [loadPortfolio]);
+    loadIndices();
+    loadFX();
+  }, [loadPortfolio, loadIndices, loadFX]);
+
+  const handleSetAlert = useCallback(
+    async (threshold) => {
+      await setFXAlert(threshold);
+      // Re-fetch FX to update alert_threshold in state
+      loadFX();
+    },
+    [loadFX],
+  );
 
   const today = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -83,6 +111,16 @@ export default function App() {
           />
         </div>
       )}
+
+      {/* Market Indices — below AllocationCard per UI-SPEC */}
+      <div className="portfolio-section">
+        <IndicesCard indices={indices} />
+      </div>
+
+      {/* FX Rate Card */}
+      <div className="portfolio-section">
+        <FXCard fx={fx} onSetAlert={handleSetAlert} />
+      </div>
     </div>
   );
 }

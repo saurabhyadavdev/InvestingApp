@@ -49,6 +49,7 @@ export default function FXCard({ fx, onSetAlert }) {
 
   const istTime = toIST(fx.timestamp);
   const hasAlert = fx.alert_threshold != null;
+  const isAlertTriggered = fx?.alert_triggered === true;
 
   async function handleSetAlert(e) {
     e.preventDefault();
@@ -75,9 +76,24 @@ export default function FXCard({ fx, onSetAlert }) {
         background: 'var(--color-bg-card)',
         borderRadius: 8,
         padding: '16px 20px',
-        border: '1px solid var(--color-border)',
+        border: isAlertTriggered ? '2px solid #FFC107' : '1px solid var(--color-border)',
       }}
     >
+      {/* Alert banner — shown when rate has crossed threshold */}
+      {isAlertTriggered && (
+        <div style={{
+          background: '#FFF3CD',
+          border: '1px solid #FFC107',
+          borderRadius: 4,
+          padding: '8px 12px',
+          marginBottom: 10,
+          fontSize: 13,
+          color: '#856404',
+        }}>
+          Rate has crossed alert threshold ({fx.alert_threshold != null ? fx.alert_threshold.toFixed(4) : ''})
+        </div>
+      )}
+
       {/* Heading */}
       <h2
         style={{

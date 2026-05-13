@@ -41,8 +41,8 @@
 
 ### Briefing & Interface
 
-- [ ] **BRIEF-01**: Morning briefing auto-generates at 07:00 IST without user action
-- [ ] **BRIEF-02**: User can trigger an on-demand mid-day refresh anytime
+- [x] **BRIEF-01**: Morning briefing auto-generates at 07:00 IST without user action
+- [x] **BRIEF-02**: User can trigger an on-demand mid-day refresh anytime
 - [x] **BRIEF-03**: User can view the complete briefing in a local web dashboard (opens in browser)
 - [ ] **BRIEF-04**: User can ask follow-up questions about any holding, signal, or recommendation via chat
 - [ ] **BRIEF-05**: Chat responses reference only the current briefing data (no hallucinated facts)
@@ -90,8 +90,8 @@
 | MKT-01 | Phase 1 | Complete |
 | MKT-02 | Phase 1 | Complete |
 | MKT-03 | Phase 1 | Complete |
-| BRIEF-01 | Phase 1 | Pending |
-| BRIEF-02 | Phase 1 | Pending |
+| BRIEF-01 | Phase 1 | Complete |
+| BRIEF-02 | Phase 1 | Complete |
 | BRIEF-03 | Phase 1 | Complete |
 | FX-01 | Phase 1 | Complete |
 | FX-02 | Phase 1 | Complete |

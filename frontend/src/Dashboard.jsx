@@ -14,7 +14,7 @@
  *   7. Footer: "Last updated: {time} IST, {date}"
  */
 import React, { useState, useCallback } from 'react';
-import { triggerRefresh } from './api.js';
+import { triggerRefresh, setFXAlert } from './api.js';
 import ImportCSV from './components/ImportCSV.jsx';
 import PortfolioTable from './components/PortfolioTable.jsx';
 import AllocationCard from './components/AllocationCard.jsx';
@@ -106,7 +106,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
   }, [onRefresh]);
 
   const handleSetAlert = useCallback(async (threshold) => {
-    // FXCard handles its own alert POST; this just re-fetches briefing after
+    await setFXAlert(threshold);   // POST the threshold to the backend
     if (onRefresh) await onRefresh();
   }, [onRefresh]);
 

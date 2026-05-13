@@ -70,10 +70,11 @@ def _classify_tr_region(isin: str) -> str:
     return "unknown"
 
 
-def _open_csv_source(source: Union[str, IO]) -> csv.DictReader:
+def _open_csv_source(source: Union[str, IO]) -> tuple[csv.DictReader, bool]:
     """
     Accept either a file path (str) or a file-like object (IO).
-    Returns a csv.DictReader.
+    Returns a (csv.DictReader, owned) tuple where owned=True means the caller
+    opened the file and is responsible for closing it.
     """
     if isinstance(source, str):
         # It's a file path — open it

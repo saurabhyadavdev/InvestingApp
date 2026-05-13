@@ -3,6 +3,33 @@
  * All fetch errors bubble up as thrown Error instances.
  */
 
+/**
+ * fetchBriefing — GET /api/briefing to retrieve the latest cached briefing.
+ * @returns {Promise<{portfolio, indices, fx, generated_at, briefing_date, fetched_at}>}
+ */
+export async function fetchBriefing() {
+  const response = await fetch('/api/briefing');
+  if (!response.ok) {
+    throw new Error(`Briefing fetch failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * triggerRefresh — POST /api/refresh to trigger on-demand briefing regeneration.
+ * @returns {Promise<{status: string, generated_at: string}>}
+ */
+export async function triggerRefresh() {
+  const response = await fetch('/api/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`Refresh failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function fetchIndices() {
   const response = await fetch('/api/indices');
   if (!response.ok) {

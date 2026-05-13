@@ -1,126 +1,41 @@
+/**
+ * App — root component that fetches the unified briefing and renders Dashboard.
+ *
+ * Simplified in Plan 04: all data comes from a single GET /api/briefing call.
+ * Direct calls to fetchPortfolio/fetchIndices/fetchFX removed here;
+ * Dashboard receives all sections from the briefing response.
+ */
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchPortfolio, fetchIndices, fetchFX, setFXAlert } from './api.js';
-import ImportCSV from './components/ImportCSV.jsx';
-import PortfolioTable from './components/PortfolioTable.jsx';
-import AllocationCard from './components/AllocationCard.jsx';
-import IndicesCard from './components/IndicesCard.jsx';
-import FXCard from './components/FXCard.jsx';
+import { fetchBriefing } from './api.js';
+import Dashboard from './Dashboard.jsx';
 import './index.css';
 
 export default function App() {
-  const [portfolio, setPortfolio] = useState(null);
+  const [briefing, setBriefing] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  const [indices, setIndices] = useState([]);
-  const [fx, setFx] = useState(null);
-
-  const loadPortfolio = useCallback(() => {
+  const loadBriefing = useCallback(() => {
     setLoading(true);
-    setError(null);
-    fetchPortfolio()
+    fetchBriefing()
       .then((data) => {
-        setPortfolio(data);
+        setBriefing(data);
         setLoading(false);
       })
-      .catch((err) => {
-        setError(err.message);
+      .catch(() => {
+        setBriefing(null);
         setLoading(false);
       });
   }, []);
 
-  const loadIndices = useCallback(() => {
-    fetchIndices()
-      .then((data) => setIndices(data.indices || []))
-      .catch(() => setIndices([]));
-  }, []);
-
-  const loadFX = useCallback(() => {
-    fetchFX()
-      .then((data) => setFx(data))
-      .catch(() => setFx(null));
-  }, []);
-
   useEffect(() => {
-    loadPortfolio();
-    loadIndices();
-    loadFX();
-  }, [loadPortfolio, loadIndices, loadFX]);
-
-  const handleSetAlert = useCallback(
-    async (threshold) => {
-      await setFXAlert(threshold);
-      // Re-fetch FX to update alert_threshold in state
-      loadFX();
-    },
-    [loadFX],
-  );
-
-  const today = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
-  const holdings = portfolio?.holdings || [];
-  const cashByBroker = portfolio?.cash_by_broker || {};
+    loadBriefing();
+  }, [loadBriefing]);
 
   return (
-    <div className="page">
-      <div className="header">
-        <div>
-          <h1>Morning Briefing</h1>
-          <div className="header-subtitle">{today}</div>
-        </div>
-      </div>
-
-      {/* ImportCSV — always visible at top */}
-      <div className="portfolio-section">
-        <div className="section-title">Import Holdings</div>
-        <ImportCSV onImportSuccess={loadPortfolio} />
-      </div>
-
-      {/* Portfolio Table */}
-      <div className="portfolio-section">
-        <div className="section-title">Your Portfolio</div>
-
-        {loading && <div className="loading">Loading...</div>}
-
-        {error && (
-          <div className="error">
-            Failed to load portfolio data: {error}
-          </div>
-        )}
-
-        {!loading && !error && (
-          <PortfolioTable
-            holdings={holdings}
-            totalInr={portfolio?.total_inr ?? 0}
-            totalEur={portfolio?.total_eur ?? 0}
-          />
-        )}
-      </div>
-
-      {/* Allocation Card — shown when there are holdings */}
-      {!loading && !error && (
-        <div className="portfolio-section">
-          <AllocationCard
-            holdings={holdings}
-            cashByBroker={cashByBroker}
-          />
-        </div>
-      )}
-
-      {/* Market Indices — below AllocationCard per UI-SPEC */}
-      <div className="portfolio-section">
-        <IndicesCard indices={indices} />
-      </div>
-
-      {/* FX Rate Card */}
-      <div className="portfolio-section">
-        <FXCard fx={fx} onSetAlert={handleSetAlert} />
-      </div>
-    </div>
+    <Dashboard
+      briefing={briefing}
+      loading={loading}
+      onRefresh={loadBriefing}
+    />
   );
 }

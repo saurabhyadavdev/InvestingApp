@@ -30,7 +30,7 @@ function formatCurrency(amount, currency) {
   return `${sym}${Math.abs(amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
-export default function AllocationCard({ holdings, cashByBroker }) {
+export default function AllocationCard({ holdings, cashByBroker, fxRate = 90 }) {
   const { byRegion, totalValue } = useMemo(() => {
     if (!holdings || holdings.length === 0) {
       return { byRegion: {}, totalValue: 0 };
@@ -47,7 +47,7 @@ export default function AllocationCard({ holdings, cashByBroker }) {
         ? h.current_price
         : h.avg_buy;
       const value = price * h.quantity;
-      const valueInr = h.currency === 'EUR' ? value * 90 : value;
+      const valueInr = h.currency === 'EUR' ? value * fxRate : value;
 
       const region = h.region || 'unknown';
       if (!regionMap[region]) {
@@ -58,7 +58,7 @@ export default function AllocationCard({ holdings, cashByBroker }) {
     }
 
     return { byRegion: regionMap, totalValue: total };
-  }, [holdings]);
+  }, [holdings, fxRate]);
 
   const zerodha_cash = cashByBroker?.zerodha ?? 0;
   const tr_cash = cashByBroker?.trade_republic ?? 0;

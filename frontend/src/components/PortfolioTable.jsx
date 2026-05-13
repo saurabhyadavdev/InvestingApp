@@ -25,7 +25,7 @@ function formatNum(value, decimals = 2) {
   return Number(value).toFixed(decimals);
 }
 
-export default function PortfolioTable({ holdings, totalInr, totalEur }) {
+export default function PortfolioTable({ holdings, totalInr, totalEur, fxRate = 90 }) {
   if (!holdings || holdings.length === 0) {
     return (
       <div className="empty-state" id="import-anchor">
@@ -48,11 +48,11 @@ export default function PortfolioTable({ holdings, totalInr, totalEur }) {
 
   // Compute sums for summary row
   const totalPlInr = holdings.reduce((sum, h) => {
-    if (h.currency === 'EUR') return sum + (h.pl || 0) * 90;
+    if (h.currency === 'EUR') return sum + (h.pl || 0) * fxRate;
     return sum + (h.pl || 0);
   }, 0);
   const totalPlEur = holdings.reduce((sum, h) => {
-    if (h.currency === 'INR') return sum + (h.pl || 0) / 90;
+    if (h.currency === 'INR') return sum + (h.pl || 0) / fxRate;
     return sum + (h.pl || 0);
   }, 0);
 
@@ -76,7 +76,7 @@ export default function PortfolioTable({ holdings, totalInr, totalEur }) {
           {holdings.map((h, idx) => {
             const sym = getCurrencySymbol(h.currency);
             const plInr = h.currency === 'EUR'
-              ? (h.pl || 0) * 90
+              ? (h.pl || 0) * fxRate
               : (h.pl || 0);
             return (
               <tr key={h.id || `${h.broker}-${h.ticker}-${idx}`}>

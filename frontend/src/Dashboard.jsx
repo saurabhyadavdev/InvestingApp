@@ -240,6 +240,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           holdings={holdings}
           totalInr={totalInr}
           totalEur={totalEur}
+          fxRate={fx.rate || 90}
         />
       </div>
 
@@ -248,6 +249,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
         <AllocationCard
           holdings={holdings}
           cashByBroker={cashByBroker}
+          fxRate={fx.rate || 90}
         />
       </div>
 

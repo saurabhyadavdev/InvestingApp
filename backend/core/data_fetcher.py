@@ -223,9 +223,20 @@ class DataFetcher:
         low: float,
         high: float,
         timestamp: str,
+        conn: sqlite3.Connection = None,
     ) -> None:
-        """Insert/replace an fx_rates row."""
-        conn = sqlite3.connect(self.db_path)
+        """Insert/replace an fx_rates row.
+
+        Parameters
+        ----------
+        conn : sqlite3.Connection, optional
+            An existing open connection to reuse. If None, a new connection is
+            opened and closed (with commit) within this call. Passing an existing
+            connection avoids a second simultaneous write connection to the DB.
+        """
+        owns_conn = conn is None
+        if owns_conn:
+            conn = sqlite3.connect(self.db_path)
         try:
             conn.execute(
                 """
@@ -234,8 +245,10 @@ class DataFetcher:
                 """,
                 (pair, rate, low, high, timestamp),
             )
-            conn.commit()
+            if owns_conn:
+                conn.commit()
         except Exception as exc:
             logger.warning("Failed to cache FX rate: %s", exc)
         finally:
-            conn.close()
+            if owns_conn:
+                conn.close()

@@ -17,9 +17,9 @@
 
 ### Market Data
 
-- [ ] **MKT-01**: User can see yesterday's closing performance for Nifty 50 and Sensex (direction + % change)
-- [ ] **MKT-02**: User can see yesterday's closing performance for DAX (direction + % change)
-- [ ] **MKT-03**: User can see yesterday's closing performance for S&P 500 (direction + % change)
+- [x] **MKT-01**: User can see yesterday's closing performance for Nifty 50 and Sensex (direction + % change)
+- [x] **MKT-02**: User can see yesterday's closing performance for DAX (direction + % change)
+- [x] **MKT-03**: User can see yesterday's closing performance for S&P 500 (direction + % change)
 - [ ] **MKT-04**: User can see news filtered to companies in their portfolio (holdings-specific news)
 - [ ] **MKT-05**: User can see India macro news (RBI, budget, inflation, sector moves)
 - [ ] **MKT-06**: User can see Germany/EU macro news (ECB, German economy, DAX events)
@@ -27,9 +27,9 @@
 
 ### FX & Cash Management
 
-- [ ] **FX-01**: User can see current EUR/INR exchange rate with timestamp
-- [ ] **FX-02**: User can set an EUR/INR alert threshold and be notified when rate crosses it
-- [ ] **FX-03**: User can see today's EUR/INR range (low–high) to assess transfer timing
+- [x] **FX-01**: User can see current EUR/INR exchange rate with timestamp
+- [x] **FX-02**: User can set an EUR/INR alert threshold and be notified when rate crosses it
+- [x] **FX-03**: User can see today's EUR/INR range (low–high) to assess transfer timing
 - [ ] **FX-04**: User can see suggestions for deploying idle cash (where to put uninvested funds)
 
 ### Signals & Recommendations
@@ -87,15 +87,15 @@
 | PORT-05 | Phase 1 | Complete |
 | PORT-06 | Phase 1 | Complete |
 | PORT-07 | Phase 1 | Complete |
-| MKT-01 | Phase 1 | Pending |
-| MKT-02 | Phase 1 | Pending |
-| MKT-03 | Phase 1 | Pending |
+| MKT-01 | Phase 1 | Complete |
+| MKT-02 | Phase 1 | Complete |
+| MKT-03 | Phase 1 | Complete |
 | BRIEF-01 | Phase 1 | Pending |
 | BRIEF-02 | Phase 1 | Pending |
 | BRIEF-03 | Phase 1 | Complete |
-| FX-01 | Phase 1 | Pending |
-| FX-02 | Phase 1 | Pending |
-| FX-03 | Phase 1 | Pending |
+| FX-01 | Phase 1 | Complete |
+| FX-02 | Phase 1 | Complete |
+| FX-03 | Phase 1 | Complete |
 | MKT-04 | Phase 2 | Pending |
 | MKT-05 | Phase 2 | Pending |
 | MKT-06 | Phase 2 | Pending |

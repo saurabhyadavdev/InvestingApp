@@ -361,3 +361,102 @@ def test_fx_range(db_path):
         result = fetcher.fetch_fx_rate("EURINR=X")
 
     assert result["low"] < result["high"], "FX low should be less than high"
+
+
+# ---------------------------------------------------------------------------
+# Plan 03 Task 2 tests — API endpoints (backend/api/indices.py, backend/api/fx.py)
+# ---------------------------------------------------------------------------
+
+def _mock_fetch_indices():
+    """Return mock DataFetcher.fetch_indices() result."""
+    return {
+        "^NSEI":  {"symbol": "^NSEI",  "name": "Nifty 50",  "close": 23456.78, "change_pct": 1.2,  "date": "2026-05-12", "market_label": "Nifty 50"},
+        "^BSESN": {"symbol": "^BSESN", "name": "Sensex",    "close": 77000.0,  "change_pct": -0.5, "date": "2026-05-12", "market_label": "Sensex"},
+        "^GDAXI": {"symbol": "^GDAXI", "name": "DAX",       "close": 18500.0,  "change_pct": 0.3,  "date": "2026-05-12", "market_label": "DAX"},
+        "^GSPC":  {"symbol": "^GSPC",  "name": "S&P 500",   "close": 5300.0,   "change_pct": -0.1, "date": "2026-05-11", "market_label": "S&P 500"},
+    }
+
+
+def _mock_fetch_fx():
+    """Return mock DataFetcher.fetch_fx_rate() result."""
+    return {"pair": "EURINR", "rate": 98.45, "low": 97.80, "high": 99.10, "timestamp": "2026-05-13T00:00:00+00:00"}
+
+
+def test_get_indices_returns_four_indices(test_client):
+    """GET /api/indices returns 200 with 4 index items each having required keys."""
+    with patch("backend.api.indices.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_indices.return_value = _mock_fetch_indices()
+        response = test_client.get("/api/indices")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "indices" in body
+    assert len(body["indices"]) == 4
+    required_keys = {"symbol", "name", "close", "change_pct", "date", "market_label"}
+    for item in body["indices"]:
+        for key in required_keys:
+            assert key in item, f"Missing key '{key}' in index item"
+
+
+def test_get_fx_returns_rate(test_client):
+    """GET /api/fx returns 200 with required keys including alert_threshold (null if not set)."""
+    with patch("backend.api.fx.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_fx_rate.return_value = _mock_fetch_fx()
+        response = test_client.get("/api/fx")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    required_keys = {"rate", "low", "high", "pair", "timestamp", "alert_threshold"}
+    for key in required_keys:
+        assert key in body, f"Missing key '{key}' in FX response"
+    assert isinstance(body["rate"], float)
+    assert body["rate"] > 0
+
+
+def test_set_fx_alert_threshold(test_client):
+    """POST /api/fx/alert with threshold=99.5 returns 200; subsequent GET /api/fx returns alert_threshold=99.5."""
+    # Set the alert
+    resp_set = test_client.post("/api/fx/alert", json={"threshold": 99.5})
+    assert resp_set.status_code == 200, resp_set.text
+
+    # GET /api/fx should now return alert_threshold=99.5
+    with patch("backend.api.fx.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_fx_rate.return_value = _mock_fetch_fx()
+        resp_get = test_client.get("/api/fx")
+    assert resp_get.status_code == 200, resp_get.text
+    body = resp_get.json()
+    assert body["alert_threshold"] == 99.5
+
+
+def test_fx_alert_persisted_in_db(test_client, db_path):
+    """After POST /api/fx/alert, settings table has key='fx_alert_threshold' value='99.5'."""
+    resp = test_client.post("/api/fx/alert", json={"threshold": 99.5})
+    assert resp.status_code == 200, resp.text
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM settings WHERE key = ?", ("fx_alert_threshold",))
+    row = cursor.fetchone()
+    conn.close()
+    assert row is not None, "fx_alert_threshold not found in settings table"
+    assert row[0] == "99.5"
+
+
+def test_indices_cache_fallback(test_client, db_path):
+    """If yfinance is unavailable (fetch_indices raises), GET /api/indices returns cached data or 503."""
+    # Pre-seed price_history with cached data
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT OR REPLACE INTO price_history (ticker, date, close) VALUES (?, ?, ?)",
+        ("^NSEI", "2026-05-12", 23000.0),
+    )
+    conn.commit()
+    conn.close()
+
+    with patch("backend.api.indices.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_indices.side_effect = Exception("yfinance unavailable")
+        response = test_client.get("/api/indices")
+
+    # Should either return cached data (200) or 503
+    assert response.status_code in (200, 503), f"Unexpected status: {response.status_code}"
+    if response.status_code == 503:
+        body = response.json()
+        assert "Market data unavailable" in body.get("detail", "")

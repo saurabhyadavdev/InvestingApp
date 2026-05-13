@@ -76,13 +76,32 @@ async def import_portfolio(
     )
 
 
+def _get_cached_fx_rate(db_path: str, fallback: float = 90.0) -> float:
+    """Read the latest EUR/INR rate from the fx_rates table; fall back to default if unavailable."""
+    import sqlite3 as _sqlite3
+    try:
+        conn = _sqlite3.connect(db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT rate FROM fx_rates ORDER BY timestamp DESC LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                return float(row[0])
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return fallback
+
+
 @router.get("/portfolio", response_model=PortfolioResponse)
 async def get_portfolio():
     """
     Return all holdings with current price and P&L.
-    FX rate is hardcoded to 90.0 EUR/INR for Phase 1 (wired in Plan 03).
+    Uses the latest cached EUR/INR rate from fx_rates table; falls back to 90.0 if not cached.
     """
-    result = get_portfolio_with_pl(settings.DB_PATH, fx_rate_eurinr=90.0)
+    fx_rate = _get_cached_fx_rate(settings.DB_PATH)
+    result = get_portfolio_with_pl(settings.DB_PATH, fx_rate_eurinr=fx_rate)
 
     holdings: List[HoldingResponse] = []
     for h in result["holdings"]:

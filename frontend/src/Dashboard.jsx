@@ -172,6 +172,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
   const cashByBroker = portfolio.cash_by_broker || {};
   const totalInr = portfolio.total_inr || 0;
   const totalEur = portfolio.total_eur || 0;
+  const totalUsd = portfolio.total_usd ?? 0;
 
   // Convert indices dict to array for IndicesCard (which expects array)
   const indicesArray = Object.values(indices || {});
@@ -240,6 +241,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           holdings={holdings}
           totalInr={totalInr}
           totalEur={totalEur}
+          totalUsd={totalUsd}
           fxRate={fx.rate || 90}
         />
       </div>

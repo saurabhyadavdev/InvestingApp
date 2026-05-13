@@ -25,7 +25,7 @@ function formatNum(value, decimals = 2) {
   return Number(value).toFixed(decimals);
 }
 
-export default function PortfolioTable({ holdings, totalInr, totalEur, fxRate = 90 }) {
+export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd = 0, fxRate = 90 }) {
   if (!holdings || holdings.length === 0) {
     return (
       <div className="empty-state" id="import-anchor">
@@ -111,6 +111,8 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, fxRate = 
             <td colSpan={3}>
               <span style={{ color: 'var(--color-neutral)', fontSize: '12px' }}>
                 (EUR equiv: €{formatNum(totalPlEur)})
+                {' '}
+                (${totalUsd ? formatNum(totalUsd) : '—'} USD)
               </span>
             </td>
           </tr>

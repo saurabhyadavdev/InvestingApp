@@ -1,1 +1,14 @@
 .planning/
+data/
+.env
+.venv/
+__pycache__/
+*.db
+*.pyc
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.egg-info/
+.pytest_cache/
+*.pyo
+.DS_Store

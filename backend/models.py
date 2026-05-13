@@ -15,6 +15,7 @@ class HoldingResponse(BaseModel):
     current_price: Optional[float] = None
     pl: float
     pl_pct: float
+    pl_usd: float = 0.0
     currency: str
     region: Optional[str] = None
     asset_type: Optional[str] = None
@@ -26,6 +27,7 @@ class PortfolioResponse(BaseModel):
     holdings: List[HoldingResponse]
     total_inr: float
     total_eur: float
+    total_usd: float = 0.0
     updated_at: str
     cash_by_broker: Dict[str, float] = {}
 

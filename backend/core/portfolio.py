@@ -305,9 +305,18 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
 # Public function 3: get_portfolio_with_pl
 # ---------------------------------------------------------------------------
 
-def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
+def get_portfolio_with_pl(
+    db_path: str,
+    fx_rate_eurinr: float = 90.0,
+    fx_rate_usdinr: float = 83.0,
+) -> dict:
     """
     Query holdings LEFT JOIN latest price_history, compute P&L per holding.
+
+    Args:
+        db_path: Path to SQLite database.
+        fx_rate_eurinr: EUR/INR conversion rate (default 90.0).
+        fx_rate_usdinr: USD/INR conversion rate (default 83.0). Used to compute pl_usd.
 
     Returns:
         {
@@ -316,7 +325,7 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
                     "id": int, "ticker": str, "isin": str|None, "name": str|None,
                     "quantity": float, "avg_buy": float, "current_price": float|None,
                     "pl": float, "pl_pct": float,
-                    "pl_inr": float,
+                    "pl_inr": float, "pl_usd": float,
                     "currency": str, "region": str|None, "asset_type": str|None,
                     "broker": str, "price_date": str|None
                 },
@@ -324,6 +333,7 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
             ],
             "total_inr": float,
             "total_eur": float,
+            "total_usd": float,
             "cash_by_broker": {"zerodha": float, "trade_republic": float},
         }
     """
@@ -360,6 +370,7 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
     holdings = []
     total_inr = 0.0
     total_eur = 0.0
+    total_usd = 0.0
     cash_by_broker: dict[str, float] = {"zerodha": 0.0, "trade_republic": 0.0}
 
     for row in rows:
@@ -384,6 +395,7 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
                 "pl": 0.0,
                 "pl_pct": 0.0,
                 "pl_inr": 0.0,
+                "pl_usd": 0.0,
                 "currency": row["currency"],
                 "region": row["region"],
                 "asset_type": row["asset_type"],
@@ -406,6 +418,13 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
         else:
             pl_inr = pl
 
+        # Convert P&L to USD equivalent (T-05-01: rate from trusted source only, never user input)
+        if row["currency"] == "EUR":
+            pl_usd = round(pl * fx_rate_eurinr / fx_rate_usdinr, 2)
+        else:
+            # INR or any other currency: divide by USDINR rate
+            pl_usd = round(pl / fx_rate_usdinr, 2)
+
         holdings.append({
             "id": row["id"],
             "ticker": row["ticker_local"],
@@ -417,6 +436,7 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
             "pl": pl,
             "pl_pct": pl_pct,
             "pl_inr": pl_inr,
+            "pl_usd": pl_usd,
             "currency": row["currency"],
             "region": row["region"],
             "asset_type": row["asset_type"],
@@ -428,12 +448,15 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
         market_value = (current_price if current_price is not None else cost) * units
         if row["currency"] == "EUR":
             total_eur += market_value
+            total_usd += market_value * fx_rate_eurinr / fx_rate_usdinr
         else:
             total_inr += market_value
+            total_usd += market_value / fx_rate_usdinr
 
     return {
         "holdings": holdings,
         "total_inr": round(total_inr, 2),
         "total_eur": round(total_eur, 2),
+        "total_usd": round(total_usd, 2),
         "cash_by_broker": cash_by_broker,
     }

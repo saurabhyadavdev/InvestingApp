@@ -94,14 +94,40 @@ def _get_cached_fx_rate(db_path: str, fallback: float = 90.0) -> float:
     return fallback
 
 
+def _get_cached_usdinr_rate(db_path: str, fallback: float = 83.0) -> float:
+    """Read the latest USD/INR rate from the fx_rates table (pair='USDINR'); fall back to 83.0."""
+    import sqlite3 as _sqlite3
+    try:
+        conn = _sqlite3.connect(db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT rate FROM fx_rates WHERE pair='USDINR' ORDER BY timestamp DESC LIMIT 1"
+            )
+            row = cursor.fetchone()
+            if row:
+                return float(row[0])
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return fallback
+
+
 @router.get("/portfolio", response_model=PortfolioResponse)
 async def get_portfolio():
     """
-    Return all holdings with current price and P&L.
-    Uses the latest cached EUR/INR rate from fx_rates table; falls back to 90.0 if not cached.
+    Return all holdings with current price and P&L including USD totals.
+    Uses the latest cached EUR/INR and USD/INR rates from fx_rates table;
+    falls back to 90.0 / 83.0 respectively if not cached.
     """
-    fx_rate = _get_cached_fx_rate(settings.DB_PATH)
-    result = get_portfolio_with_pl(settings.DB_PATH, fx_rate_eurinr=fx_rate)
+    fx_rate_eurinr = _get_cached_fx_rate(settings.DB_PATH)
+    fx_rate_usdinr = _get_cached_usdinr_rate(settings.DB_PATH)
+    result = get_portfolio_with_pl(
+        settings.DB_PATH,
+        fx_rate_eurinr=fx_rate_eurinr,
+        fx_rate_usdinr=fx_rate_usdinr,
+    )
 
     holdings: List[HoldingResponse] = []
     for h in result["holdings"]:
@@ -115,6 +141,7 @@ async def get_portfolio():
             current_price=h.get("current_price"),
             pl=h["pl"],
             pl_pct=h["pl_pct"],
+            pl_usd=h.get("pl_usd", 0.0),
             currency=h["currency"],
             region=h.get("region"),
             asset_type=h.get("asset_type"),
@@ -126,6 +153,7 @@ async def get_portfolio():
         holdings=holdings,
         total_inr=result["total_inr"],
         total_eur=result["total_eur"],
+        total_usd=result.get("total_usd", 0.0),
         updated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         cash_by_broker=result["cash_by_broker"],
     )

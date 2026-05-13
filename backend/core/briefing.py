@@ -52,7 +52,7 @@ class BriefingOrchestrator:
         Exceptions in individual sections are caught and logged — partial data
         is better than no briefing (fail-open per T-04-04 guidance).
         """
-        # Step 1: FX rate (needed for portfolio conversion)
+        # Step 1: FX rates (needed for portfolio P&L conversion)
         try:
             fx_data = self.fetcher.fetch_fx_rate()
             fx_rate_eurinr = fx_data.get("rate", 90.0)
@@ -60,6 +60,14 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: FX fetch failed: %s", exc)
             fx_data = {}
             fx_rate_eurinr = 90.0
+
+        # Fetch USD/INR rate separately (T-05-02: wrapped in try/except, default 83.0 on failure)
+        try:
+            usdinr_data = self.fetcher.fetch_fx_rate("USDINR=X")
+            fx_rate_usdinr = usdinr_data.get("rate", 83.0)
+        except Exception as exc:
+            logger.error("BriefingOrchestrator: USDINR FX fetch failed: %s", exc)
+            fx_rate_usdinr = 83.0
 
         # Step 2: Market indices
         try:
@@ -70,7 +78,11 @@ class BriefingOrchestrator:
 
         # Step 3: Portfolio P&L
         try:
-            portfolio_data = get_portfolio_with_pl(self.db_path, fx_rate_eurinr=fx_rate_eurinr)
+            portfolio_data = get_portfolio_with_pl(
+                self.db_path,
+                fx_rate_eurinr=fx_rate_eurinr,
+                fx_rate_usdinr=fx_rate_usdinr,
+            )
         except Exception as exc:
             logger.error("BriefingOrchestrator: portfolio fetch failed: %s", exc)
             portfolio_data = {}

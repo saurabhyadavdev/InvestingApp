@@ -2,7 +2,7 @@
 Pydantic v2 response models for InvestIQ API.
 """
 from typing import Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class HoldingResponse(BaseModel):
@@ -33,4 +33,51 @@ class PortfolioResponse(BaseModel):
 class ImportResponse(BaseModel):
     broker: str
     imported_count: int
+    message: str
+
+
+# ---------------------------------------------------------------------------
+# Plan 03: Market indices models
+# ---------------------------------------------------------------------------
+
+class IndexEntry(BaseModel):
+    symbol: str
+    name: str
+    close: float
+    change_pct: float
+    date: str
+    market_label: str
+
+
+class IndicesResponse(BaseModel):
+    indices: List[IndexEntry]
+    fetched_at: str
+
+
+# ---------------------------------------------------------------------------
+# Plan 03: FX rate models
+# ---------------------------------------------------------------------------
+
+class FXResponse(BaseModel):
+    pair: str
+    rate: float
+    low: float
+    high: float
+    timestamp: str
+    alert_threshold: Optional[float] = None
+
+
+class FXAlertRequest(BaseModel):
+    threshold: float
+
+    @field_validator("threshold")
+    @classmethod
+    def threshold_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("threshold must be a positive number")
+        return v
+
+
+class FXAlertResponse(BaseModel):
+    alert_threshold: float
     message: str

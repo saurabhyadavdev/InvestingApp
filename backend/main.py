@@ -18,6 +18,8 @@ from backend.config import settings
 from backend.database import create_schema
 from backend.api.health import router as health_router
 from backend.api.portfolio import router as portfolio_router
+from backend.api.indices import router as indices_router
+from backend.api.fx import router as fx_router
 
 # Global scheduler — jobs added in Plan 04
 scheduler = BackgroundScheduler()
@@ -54,6 +56,8 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(portfolio_router)
+app.include_router(indices_router)
+app.include_router(fx_router)
 
 
 if __name__ == "__main__":

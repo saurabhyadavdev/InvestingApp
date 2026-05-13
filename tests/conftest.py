@@ -27,14 +27,18 @@ def db_path(tmp_path):
 def test_client(db_path):
     """
     Return a FastAPI TestClient wired to the test database.
-    Overrides settings.DB_PATH so the app uses the temp DB.
+    Overrides settings.DB_PATH so the app uses the temp DB, then restores
+    the original value after the test to prevent cross-test contamination.
     """
     import backend.config as config_module
-    # Override DB_PATH on the settings singleton before importing main
+    original_db_path = config_module.settings.DB_PATH
     config_module.settings.DB_PATH = db_path
 
     # Import app after patching so startup event uses test db_path
     from fastapi.testclient import TestClient
     from backend.main import app
-    with TestClient(app) as client:
-        yield client
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        config_module.settings.DB_PATH = original_db_path

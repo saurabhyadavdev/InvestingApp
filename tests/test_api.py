@@ -425,7 +425,7 @@ def test_get_indices_returns_four_indices(test_client):
 
 
 def test_get_fx_returns_rate(test_client):
-    """GET /api/fx returns 200 with required keys including alert_threshold (null if not set)."""
+    """GET /api/fx returns 200 with required keys including alert_threshold (null if not set) and alert_triggered bool."""
     with patch("backend.api.fx.DataFetcher") as MockDF:
         MockDF.return_value.fetch_fx_rate.return_value = _mock_fetch_fx()
         response = test_client.get("/api/fx")
@@ -436,6 +436,7 @@ def test_get_fx_returns_rate(test_client):
         assert key in body, f"Missing key '{key}' in FX response"
     assert isinstance(body["rate"], float)
     assert body["rate"] > 0
+    assert isinstance(body["alert_triggered"], bool)
 
 
 def test_set_fx_alert_threshold(test_client):
@@ -487,3 +488,68 @@ def test_indices_cache_fallback(test_client, db_path):
     if response.status_code == 503:
         body = response.json()
         assert "Market data unavailable" in body.get("detail", "")
+
+
+# ---------------------------------------------------------------------------
+# Plan 06 tests — FX alert_triggered (Task 1 TDD)
+# ---------------------------------------------------------------------------
+
+def _mock_fetch_fx_custom(rate):
+    """Return mock DataFetcher.fetch_fx_rate() result with custom rate."""
+    return {
+        "pair": "EURINR",
+        "rate": rate,
+        "low": rate - 1.0,
+        "high": rate + 1.0,
+        "timestamp": "2026-01-01T00:00:00Z",
+    }
+
+
+def test_fx_alert_triggered_when_rate_above_threshold(test_client):
+    """Set threshold=85.0; mock rate=90.0 → GET /api/fx returns alert_triggered=True."""
+    # Set alert threshold
+    resp = test_client.post("/api/fx/alert", json={"threshold": 85.0})
+    assert resp.status_code == 200, resp.text
+
+    with patch("backend.api.fx.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_fx_rate.return_value = _mock_fetch_fx_custom(90.0)
+        response = test_client.get("/api/fx")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["alert_triggered"] is True
+
+
+def test_fx_alert_not_triggered_when_rate_below(test_client):
+    """Set threshold=100.0; mock rate=90.0 → GET /api/fx returns alert_triggered=False."""
+    resp = test_client.post("/api/fx/alert", json={"threshold": 100.0})
+    assert resp.status_code == 200, resp.text
+
+    with patch("backend.api.fx.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_fx_rate.return_value = _mock_fetch_fx_custom(90.0)
+        response = test_client.get("/api/fx")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["alert_triggered"] is False
+
+
+def test_fx_alert_triggered_false_when_no_threshold(test_client):
+    """No threshold set → GET /api/fx returns alert_triggered=False."""
+    with patch("backend.api.fx.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_fx_rate.return_value = _mock_fetch_fx_custom(90.0)
+        response = test_client.get("/api/fx")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["alert_triggered"] is False
+
+
+def test_fx_alert_triggered_at_exact_threshold(test_client):
+    """Set threshold=90.0; mock rate=90.0 → GET /api/fx returns alert_triggered=True (>= boundary)."""
+    resp = test_client.post("/api/fx/alert", json={"threshold": 90.0})
+    assert resp.status_code == 200, resp.text
+
+    with patch("backend.api.fx.DataFetcher") as MockDF:
+        MockDF.return_value.fetch_fx_rate.return_value = _mock_fetch_fx_custom(90.0)
+        response = test_client.get("/api/fx")
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["alert_triggered"] is True

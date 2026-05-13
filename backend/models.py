@@ -1,7 +1,7 @@
 """
 Pydantic v2 response models for InvestIQ API.
 """
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel
 
 
@@ -12,7 +12,7 @@ class HoldingResponse(BaseModel):
     name: Optional[str] = None
     quantity: float
     avg_buy: float
-    current_price: float
+    current_price: Optional[float] = None
     pl: float
     pl_pct: float
     currency: str
@@ -27,3 +27,10 @@ class PortfolioResponse(BaseModel):
     total_inr: float
     total_eur: float
     updated_at: str
+    cash_by_broker: Dict[str, float] = {}
+
+
+class ImportResponse(BaseModel):
+    broker: str
+    imported_count: int
+    message: str

@@ -1,94 +1,112 @@
 """
-Portfolio endpoint — reads holdings from SQLite and returns P&L.
+Portfolio endpoints:
+  - POST /api/import  — accept Zerodha or Trade Republic CSV, import to SQLite
+  - GET  /api/portfolio — return holdings with P&L and cash_by_broker
+
 All SQL uses parameterized queries (? placeholders) — no f-string interpolation.
 """
-import sqlite3
+import tempfile
+import os
 from datetime import datetime
 from typing import List
-from fastapi import APIRouter
+
+from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 
 from backend.config import settings
-from backend.models import HoldingResponse, PortfolioResponse
+from backend.models import HoldingResponse, ImportResponse, PortfolioResponse
+from backend.core.portfolio import (
+    import_zerodha_csv,
+    import_trade_republic_csv,
+    get_portfolio_with_pl,
+)
 
 router = APIRouter(prefix="/api")
+
+VALID_BROKERS = ("zerodha", "trade_republic")
+
+
+@router.post("/import", response_model=ImportResponse)
+async def import_portfolio(
+    broker: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """
+    Accept a CSV file upload for a specific broker and import holdings to SQLite.
+
+    Form fields:
+        broker: "zerodha" or "trade_republic"
+        file: CSV file content
+
+    Returns ImportResponse with imported_count.
+    Raises:
+        400 if broker is not in the valid list.
+        422 if CSV is missing required columns.
+    """
+    if broker not in VALID_BROKERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid broker '{broker}'. Must be one of: {', '.join(VALID_BROKERS)}",
+        )
+
+    # Save uploaded file to a temp location, then parse it
+    content = await file.read()
+
+    # Write to temp file so csv.DictReader can open by path, OR pass as StringIO
+    # We use io.StringIO to avoid temp file cleanup complexity
+    import io
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    csv_io = io.StringIO(text)
+
+    try:
+        if broker == "zerodha":
+            count = import_zerodha_csv(csv_io, settings.DB_PATH)
+        else:
+            count = import_trade_republic_csv(csv_io, settings.DB_PATH)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    return ImportResponse(
+        broker=broker,
+        imported_count=count,
+        message="Import successful",
+    )
 
 
 @router.get("/portfolio", response_model=PortfolioResponse)
 async def get_portfolio():
     """
     Return all holdings with current price and P&L.
-    Reads from holdings LEFT JOIN price_history (most recent date per ticker).
+    FX rate is hardcoded to 90.0 EUR/INR for Phase 1 (wired in Plan 03).
     """
-    conn = sqlite3.connect(settings.DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    # Parameterized query only — no f-string SQL interpolation
-    cursor.execute("""
-        SELECT
-            h.id,
-            h.broker,
-            h.ticker_local,
-            h.isin,
-            h.name,
-            h.units,
-            h.cost_per_unit,
-            h.currency,
-            h.region,
-            h.asset_type,
-            p.close  AS current_price,
-            p.date   AS price_date
-        FROM holdings h
-        LEFT JOIN price_history p ON h.ticker_yfinance = p.ticker
-            AND p.date = (
-                SELECT MAX(date) FROM price_history
-                WHERE ticker = h.ticker_yfinance
-            )
-        ORDER BY h.broker, h.region
-    """)
-
-    rows = cursor.fetchall()
-    conn.close()
+    result = get_portfolio_with_pl(settings.DB_PATH, fx_rate_eurinr=90.0)
 
     holdings: List[HoldingResponse] = []
-    total_inr = 0.0
-    total_eur = 0.0
-
-    for row in rows:
-        current_price = row["current_price"] if row["current_price"] is not None else 0.0
-        cost = row["cost_per_unit"]
-        units = row["units"]
-
-        pl = round((current_price - cost) * units, 2)
-        pl_pct = round((pl / (cost * units) * 100) if cost and units else 0.0, 2)
-
+    for h in result["holdings"]:
         holdings.append(HoldingResponse(
-            id=row["id"],
-            ticker=row["ticker_local"],
-            isin=row["isin"],
-            name=row["name"],
-            quantity=units,
-            avg_buy=cost,
-            current_price=current_price,
-            pl=pl,
-            pl_pct=pl_pct,
-            currency=row["currency"],
-            region=row["region"],
-            asset_type=row["asset_type"],
-            broker=row["broker"],
-            price_date=row["price_date"],
+            id=h.get("id"),
+            ticker=h["ticker"],
+            isin=h.get("isin"),
+            name=h.get("name"),
+            quantity=h["quantity"],
+            avg_buy=h["avg_buy"],
+            current_price=h.get("current_price"),
+            pl=h["pl"],
+            pl_pct=h["pl_pct"],
+            currency=h["currency"],
+            region=h.get("region"),
+            asset_type=h.get("asset_type"),
+            broker=h["broker"],
+            price_date=h.get("price_date"),
         ))
-
-        # Accumulate totals by currency (simplified: separate INR and EUR buckets)
-        value = current_price * units if current_price else cost * units
-        if row["currency"] == "EUR":
-            total_eur += value
-        else:
-            total_inr += value
 
     return PortfolioResponse(
         holdings=holdings,
-        total_inr=round(total_inr, 2),
-        total_eur=round(total_eur, 2),
+        total_inr=result["total_inr"],
+        total_eur=result["total_eur"],
         updated_at=datetime.utcnow().isoformat(),
+        cash_by_broker=result["cash_by_broker"],
     )

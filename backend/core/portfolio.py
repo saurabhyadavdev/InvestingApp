@@ -118,66 +118,66 @@ def import_zerodha_csv(source: Union[str, IO], db_path: str) -> int:
         if missing:
             raise ValueError(f"CSV missing required columns: {', '.join(sorted(missing))}")
 
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
         count = 0
 
-        for row in first_rows:
-            ticker_local = (row.get("Trading Symbol") or "").strip()
-            if not ticker_local:
-                continue
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
 
-            exchange = (row.get("Exchange") or "NSE").strip()
-            isin = (row.get("ISIN") or "").strip() or None
-            name = (row.get("Name") or row.get("Security name") or "").strip() or None
-
-            # Parse numeric fields
-            raw_qty = (row.get("Quantity") or "0").strip()
-            raw_price = (row.get("Average Price") or "0").strip()
-
-            # Cash detection: CASHCOMPONENT or zero/empty quantity
-            asset_type = _classify_asset_type(ticker_local, name or "")
-
-            if asset_type == "cash":
-                units = 0.0
-                cost_per_unit = 0.0
-                region = "india"
-                ticker_yfinance = ticker_local  # no suffix for cash
-            else:
-                try:
-                    units = _clean_numeric(raw_qty)
-                    cost_per_unit = _clean_numeric(raw_price)
-                except ValueError:
+            for row in first_rows:
+                ticker_local = (row.get("Trading Symbol") or "").strip()
+                if not ticker_local:
                     continue
 
-                # Skip zero-quantity non-cash rows
-                if units == 0 and asset_type != "cash":
-                    continue
+                exchange = (row.get("Exchange") or "NSE").strip()
+                isin = (row.get("ISIN") or "").strip() or None
+                name = (row.get("Name") or row.get("Security name") or "").strip() or None
 
-                region, ticker_yfinance = _map_zerodha_exchange(exchange, ticker_local)
+                # Parse numeric fields
+                raw_qty = (row.get("Quantity") or "0").strip()
+                raw_price = (row.get("Average Price") or "0").strip()
 
-            # Insert or replace (ISIN is unique key if present)
-            cursor.execute("""
-                INSERT OR REPLACE INTO holdings
-                    (broker, ticker_local, isin, ticker_yfinance, name, units,
-                     cost_per_unit, currency, region, asset_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                "zerodha",
-                ticker_local,
-                isin,
-                ticker_yfinance,
-                name,
-                units,
-                cost_per_unit,
-                "INR",
-                region,
-                asset_type,
-            ))
-            count += 1
+                # Cash detection: CASHCOMPONENT or zero/empty quantity
+                asset_type = _classify_asset_type(ticker_local, name or "")
 
-        conn.commit()
-        conn.close()
+                if asset_type == "cash":
+                    units = 0.0
+                    cost_per_unit = 0.0
+                    region = "india"
+                    ticker_yfinance = ticker_local  # no suffix for cash
+                else:
+                    try:
+                        units = _clean_numeric(raw_qty)
+                        cost_per_unit = _clean_numeric(raw_price)
+                    except ValueError:
+                        continue
+
+                    # Skip zero-quantity non-cash rows
+                    if units == 0 and asset_type != "cash":
+                        continue
+
+                    region, ticker_yfinance = _map_zerodha_exchange(exchange, ticker_local)
+
+                # Insert or replace (ISIN is unique key if present)
+                cursor.execute("""
+                    INSERT OR REPLACE INTO holdings
+                        (broker, ticker_local, isin, ticker_yfinance, name, units,
+                         cost_per_unit, currency, region, asset_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    "zerodha",
+                    ticker_local,
+                    isin,
+                    ticker_yfinance,
+                    name,
+                    units,
+                    cost_per_unit,
+                    "INR",
+                    region,
+                    asset_type,
+                ))
+                count += 1
+
+            conn.commit()
         return count
 
     finally:
@@ -248,43 +248,43 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
                 aggregated[isin]["total_units"] -= qty
                 aggregated[isin]["total_cost"] -= qty * price
 
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
         count = 0
 
-        for isin, agg in aggregated.items():
-            total_units = agg["total_units"]
-            total_cost = agg["total_cost"]
-            name = agg["name"]
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
 
-            if total_units <= 0:
-                continue  # fully sold
+            for isin, agg in aggregated.items():
+                total_units = agg["total_units"]
+                total_cost = agg["total_cost"]
+                name = agg["name"]
 
-            cost_per_unit = total_cost / total_units
-            asset_type = "etf" if "etf" in name.lower() else "equity"
-            region = _classify_tr_region(isin)
+                if total_units <= 0:
+                    continue  # fully sold
 
-            cursor.execute("""
-                INSERT OR REPLACE INTO holdings
-                    (broker, ticker_local, isin, ticker_yfinance, name, units,
-                     cost_per_unit, currency, region, asset_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                "trade_republic",
-                isin,          # use ISIN as ticker_local for TR (no exchange ticker)
-                isin,
-                None,          # ticker_yfinance mapped in Plan 03 via ISIN lookup
-                name or None,
-                round(total_units, 6),
-                round(cost_per_unit, 6),
-                "EUR",
-                region,
-                asset_type,
-            ))
-            count += 1
+                cost_per_unit = total_cost / total_units
+                asset_type = "etf" if "etf" in name.lower() else "equity"
+                region = _classify_tr_region(isin)
 
-        conn.commit()
-        conn.close()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO holdings
+                        (broker, ticker_local, isin, ticker_yfinance, name, units,
+                         cost_per_unit, currency, region, asset_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    "trade_republic",
+                    isin,          # use ISIN as ticker_local for TR (no exchange ticker)
+                    isin,
+                    None,          # ticker_yfinance mapped in Plan 03 via ISIN lookup
+                    name or None,
+                    round(total_units, 6),
+                    round(cost_per_unit, 6),
+                    "EUR",
+                    region,
+                    asset_type,
+                ))
+                count += 1
+
+            conn.commit()
         return count
 
     finally:

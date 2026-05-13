@@ -89,7 +89,7 @@ class BriefingOrchestrator:
             "briefing_date": briefing_date,
         }
 
-        # Step 5: INSERT into briefing_snapshots
+        # Step 5: INSERT into briefing_snapshots, then prune old rows (keep last 30)
         try:
             briefing_json = json.dumps(briefing)
             conn = sqlite3.connect(self.db_path)
@@ -98,6 +98,13 @@ class BriefingOrchestrator:
                     "INSERT INTO briefing_snapshots (date, type, briefing_json) VALUES (?, ?, ?)",
                     (briefing_date, "morning", briefing_json),
                 )
+                # Delete all but the most recent 30 rows to prevent unbounded growth
+                conn.execute("""
+                    DELETE FROM briefing_snapshots
+                    WHERE id NOT IN (
+                        SELECT id FROM briefing_snapshots ORDER BY created_at DESC LIMIT 30
+                    )
+                """)
                 conn.commit()
             finally:
                 conn.close()

@@ -39,13 +39,15 @@
 10. User can see current EUR/INR rate with timestamp and set an alert threshold for rate monitoring
 11. User can view the complete briefing in a local web dashboard accessible via browser
 
-**Plans:** 4/4 plans complete
+**Plans:** 5/6 plans executed
 
 Plans:
 - [x] 01-01-PLAN.md — Walking Skeleton: FastAPI + React + SQLite schema + health endpoint + portfolio stub
 - [x] 01-02-PLAN.md — CSV import + portfolio table + allocation card (PORT-01 through PORT-07)
 - [x] 01-03-PLAN.md — Market indices + FX rate + alert threshold (MKT-01–03, FX-01–03)
 - [x] 01-04-PLAN.md — Briefing orchestration + APScheduler + refresh + full dashboard (BRIEF-01–03)
+- [x] 01-05-PLAN.md — Gap closure: USD P&L per holding + total_usd in portfolio response + PortfolioTable USD total (PORT-04)
+- [ ] 01-06-PLAN.md — Gap closure: FX alert crossing notification — alert_triggered flag + FXCard visual indicator (FX-02)
 
 **UI hint:** yes
 
@@ -83,7 +85,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Daily Briefing | 4/4 | Complete   | 2026-05-13 |
+| 1. Core Daily Briefing | 5/6 | In Progress|  |
 | 2. Intelligence & Chat | 0/1 | Not started | — |
 
 ---

@@ -140,6 +140,77 @@ def test_pl_calculation(tmp_db):
 
 
 # ---------------------------------------------------------------------------
+# Test 3b: pl_usd for INR holding
+# ---------------------------------------------------------------------------
+
+def test_pl_usd_inr_holding(tmp_db):
+    """INR holding: pl_usd = round(pl / fx_rate_usdinr, 2)."""
+    from backend.core.portfolio import get_portfolio_with_pl
+
+    conn = sqlite3.connect(tmp_db)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO holdings
+            (broker, ticker_local, ticker_yfinance, isin, units, cost_per_unit, currency, region, asset_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("zerodha", "INFY", "INFY.NS", "INE009A01021", 100, 10.0, "INR", "india", "equity"))
+    cur.execute("""
+        INSERT INTO price_history (ticker, date, close, adj_close) VALUES (?, ?, ?, ?)
+    """, ("INFY.NS", "2024-06-01", 20.0, 20.0))
+    conn.commit()
+    conn.close()
+
+    # pl = (20 - 10) * 100 = 1000.0; pl_usd = 1000.0 / 83.5 = 11.976... -> 11.98
+    result = get_portfolio_with_pl(tmp_db, fx_rate_eurinr=90.0, fx_rate_usdinr=83.5)
+    h = result["holdings"][0]
+    assert "pl_usd" in h, "pl_usd key missing from holding dict"
+    expected_pl_usd = round(1000.0 / 83.5, 2)
+    assert h["pl_usd"] == pytest.approx(expected_pl_usd, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Test 3c: pl_usd for EUR holding
+# ---------------------------------------------------------------------------
+
+def test_pl_usd_eur_holding(tmp_db):
+    """EUR holding: pl_usd = round(pl * fx_rate_eurinr / fx_rate_usdinr, 2)."""
+    from backend.core.portfolio import get_portfolio_with_pl
+
+    conn = sqlite3.connect(tmp_db)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO holdings
+            (broker, ticker_local, ticker_yfinance, isin, units, cost_per_unit, currency, region, asset_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, ("trade_republic", "DE0007164600", "SAP.DE", "DE0007164600", 10, 140.0, "EUR", "germany", "equity"))
+    cur.execute("""
+        INSERT INTO price_history (ticker, date, close, adj_close) VALUES (?, ?, ?, ?)
+    """, ("SAP.DE", "2024-06-01", 150.0, 150.0))
+    conn.commit()
+    conn.close()
+
+    # pl = (150 - 140) * 10 = 100.0 EUR; pl_usd = 100.0 * 92.0 / 83.5 = 110.18
+    result = get_portfolio_with_pl(tmp_db, fx_rate_eurinr=92.0, fx_rate_usdinr=83.5)
+    h = result["holdings"][0]
+    assert "pl_usd" in h, "pl_usd key missing from holding dict"
+    expected_pl_usd = round(100.0 * 92.0 / 83.5, 2)
+    assert h["pl_usd"] == pytest.approx(expected_pl_usd, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Test 3d: total_usd in return dict
+# ---------------------------------------------------------------------------
+
+def test_total_usd_in_result(tmp_db):
+    """get_portfolio_with_pl() return dict contains 'total_usd' key."""
+    from backend.core.portfolio import get_portfolio_with_pl
+
+    result = get_portfolio_with_pl(tmp_db, fx_rate_eurinr=90.0, fx_rate_usdinr=83.0)
+    assert "total_usd" in result, "total_usd key missing from return dict"
+    assert isinstance(result["total_usd"], float)
+
+
+# ---------------------------------------------------------------------------
 # Test 4: Missing required column raises ValueError
 # ---------------------------------------------------------------------------
 

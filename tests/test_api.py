@@ -150,7 +150,7 @@ def test_import_bad_csv(test_client):
 
 
 def test_portfolio_with_holdings_returns_pl(test_client):
-    """After import, GET /api/portfolio has holdings with non-null pl/pl_pct; cash_by_broker present."""
+    """After import, GET /api/portfolio has holdings with non-null pl/pl_pct/pl_usd; cash_by_broker present."""
     # Import Zerodha CSV first
     test_client.post(
         "/api/import",
@@ -170,16 +170,43 @@ def test_portfolio_with_holdings_returns_pl(test_client):
     assert h["pl_pct"] is not None
 
 
-def test_get_portfolio_structure(test_client):
-    """GET /api/portfolio returns JSON with required top-level keys."""
+def test_portfolio_holding_has_pl_usd(test_client):
+    """After import, individual holdings in GET /api/portfolio response each have a 'pl_usd' field (float)."""
+    test_client.post(
+        "/api/import",
+        data={"broker": "zerodha"},
+        files={"file": ("zerodha.csv", ZERODHA_CSV.encode(), "text/csv")},
+    )
+
     response = test_client.get("/api/portfolio")
     assert response.status_code == 200
     body = response.json()
-    for key in ("holdings", "total_inr", "total_eur", "cash_by_broker"):
+    assert len(body["holdings"]) >= 1
+    for holding in body["holdings"]:
+        assert "pl_usd" in holding, f"pl_usd key missing from holding {holding.get('ticker')}"
+        assert isinstance(holding["pl_usd"], (int, float)), "pl_usd must be a number"
+
+
+def test_get_portfolio_structure(test_client):
+    """GET /api/portfolio returns JSON with required top-level keys including total_usd."""
+    response = test_client.get("/api/portfolio")
+    assert response.status_code == 200
+    body = response.json()
+    for key in ("holdings", "total_inr", "total_eur", "total_usd", "cash_by_broker"):
         assert key in body, f"Missing key '{key}' in portfolio response"
     assert isinstance(body["total_inr"], (int, float))
     assert isinstance(body["total_eur"], (int, float))
+    assert isinstance(body["total_usd"], (int, float))
     assert isinstance(body["cash_by_broker"], dict)
+
+
+def test_get_portfolio_structure_includes_usd(test_client):
+    """GET /api/portfolio response JSON has a float 'total_usd' key at top level."""
+    response = test_client.get("/api/portfolio")
+    assert response.status_code == 200
+    body = response.json()
+    assert "total_usd" in body, "top-level 'total_usd' key missing from portfolio response"
+    assert isinstance(body["total_usd"], (int, float))
 
 
 # ---------------------------------------------------------------------------

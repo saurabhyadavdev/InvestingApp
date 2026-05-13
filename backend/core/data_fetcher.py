@@ -109,8 +109,9 @@ class DataFetcher:
 
                     change_pct = (close_last - close_prev) / close_prev * 100
 
-                    # Use timezone-aware reference date for labelling
-                    ref_date = get_market_reference_date(meta["market"])
+                    # Use the actual last DataFrame row date — ground truth from yfinance.
+                    # This avoids weekend/holiday skew from the timezone-computed reference.
+                    ref_date = df_sym.index[-1].date().isoformat()
 
                     entry: dict = {
                         "symbol": symbol,

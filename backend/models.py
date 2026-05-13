@@ -67,6 +67,7 @@ class FXResponse(BaseModel):
     high: float
     timestamp: str
     alert_threshold: Optional[float] = None
+    alert_triggered: bool = False
 
 
 class FXAlertRequest(BaseModel):

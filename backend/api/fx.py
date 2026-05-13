@@ -53,6 +53,9 @@ async def get_fx():
     # Read alert threshold from settings table
     alert_threshold = _get_alert_threshold(settings.DB_PATH)
 
+    # T-06-01: alert_triggered computed server-side — frontend receives bool, not raw comparison
+    alert_triggered = bool(alert_threshold is not None and fx_data["rate"] >= alert_threshold)
+
     return FXResponse(
         pair=fx_data["pair"],
         rate=fx_data["rate"],
@@ -60,6 +63,7 @@ async def get_fx():
         high=fx_data["high"],
         timestamp=fx_data["timestamp"],
         alert_threshold=alert_threshold,
+        alert_triggered=alert_triggered,
     )
 
 

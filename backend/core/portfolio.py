@@ -415,11 +415,12 @@ def get_portfolio_with_pl(db_path: str, fx_rate_eurinr: float = 90.0) -> dict:
             "price_date": row["price_date"],
         })
 
-        # Accumulate totals
+        # Accumulate totals — use market value (not P&L delta)
+        market_value = (current_price if current_price is not None else cost) * units
         if row["currency"] == "EUR":
-            total_eur += pl
+            total_eur += market_value
         else:
-            total_inr += pl
+            total_inr += market_value
 
     return {
         "holdings": holdings,

@@ -7,7 +7,7 @@ All SQL uses parameterized queries (? placeholders) — no f-string interpolatio
 """
 import tempfile
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, File
@@ -107,6 +107,6 @@ async def get_portfolio():
         holdings=holdings,
         total_inr=result["total_inr"],
         total_eur=result["total_eur"],
-        updated_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         cash_by_broker=result["cash_by_broker"],
     )

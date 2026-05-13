@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["indices"])
 
 # Canonical order for display
-_SYMBOL_ORDER = ["^NSEI", "^BSESN", "^GDAXI", "^GSPC"]
+_SYMBOL_ORDER = ["^NSEI", "^BSESN", "^GDAXI", "^GSPC", "^NDX"]
 
 
 @router.get("/indices")
 async def get_indices():
     """
-    Return the 4 major market indices with closing prices and % change.
+    Return the 5 major market indices with closing prices and % change.
 
     Response
     --------

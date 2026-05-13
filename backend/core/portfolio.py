@@ -96,12 +96,19 @@ def import_zerodha_csv(source: Union[str, IO], db_path: str) -> int:
     """
     Parse a Zerodha CSV (file path or file-like) and insert holdings into SQLite.
 
-    Required columns: Trading Symbol, Quantity, Average Price, ISIN
-    Optional: Exchange (defaults to NSE), Name (or Security name)
+    Supports two Zerodha export formats:
+    - Holdings export: Trading Symbol, Quantity, Average Price, ISIN
+    - Kite portfolio view: Instrument, Qty., Avg. cost, LTP
 
     Returns: count of rows inserted.
     Raises: ValueError if required columns are missing.
     """
+    # Column aliases: Kite portfolio view → canonical names
+    _COL_ALIASES = {
+        "Instrument": "Trading Symbol",
+        "Qty.": "Quantity",
+        "Avg. cost": "Average Price",
+    }
     required_cols = {"Trading Symbol", "Quantity", "Average Price"}
 
     if isinstance(source, str):
@@ -117,6 +124,14 @@ def import_zerodha_csv(source: Union[str, IO], db_path: str) -> int:
         first_rows = list(reader)  # read all rows to get fieldnames
         fieldnames = set(reader.fieldnames or [])
 
+        # Remap rows if Kite portfolio view columns detected
+        if _COL_ALIASES.keys() & fieldnames:
+            first_rows = [
+                {_COL_ALIASES.get(k, k): v for k, v in row.items()}
+                for row in first_rows
+            ]
+            fieldnames = {_COL_ALIASES.get(f, f) for f in fieldnames}
+
         missing = required_cols - fieldnames
         if missing:
             raise ValueError(f"CSV missing required columns: {', '.join(sorted(missing))}")
@@ -125,6 +140,8 @@ def import_zerodha_csv(source: Union[str, IO], db_path: str) -> int:
 
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
+            # Clear existing Zerodha holdings so re-imports replace rather than append
+            cursor.execute("DELETE FROM holdings WHERE broker = 'zerodha'")
 
             for row in first_rows:
                 ticker_local = (row.get("Trading Symbol") or "").strip()
@@ -255,6 +272,8 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
 
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
+            # Clear existing TR holdings so re-imports replace rather than append
+            cursor.execute("DELETE FROM holdings WHERE broker = 'trade_republic'")
 
             for isin, agg in aggregated.items():
                 total_units = agg["total_units"]

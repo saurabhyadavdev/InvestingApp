@@ -106,8 +106,20 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
   }, [onRefresh]);
 
   const handleSetAlert = useCallback(async (threshold) => {
-    await setFXAlert(threshold);   // POST the threshold to the backend
+    await setFXAlert(threshold);
     if (onRefresh) await onRefresh();
+  }, [onRefresh]);
+
+  const handleImportSuccess = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await triggerRefresh();
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error('Post-import refresh failed:', err);
+    } finally {
+      setRefreshing(false);
+    }
   }, [onRefresh]);
 
   // --- Loading state ---
@@ -229,7 +241,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
 
       {/* Import Holdings */}
       <div className="portfolio-section">
-        <ImportCSV onImportSuccess={onRefresh} />
+        <ImportCSV onImportSuccess={handleImportSuccess} />
       </div>
 
       {/* Your Portfolio */}

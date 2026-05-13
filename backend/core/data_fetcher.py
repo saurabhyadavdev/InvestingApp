@@ -22,10 +22,11 @@ logger = logging.getLogger(__name__)
 
 # Index metadata
 _INDEX_META: dict = {
-    "^NSEI":  {"name": "Nifty 50",  "market": "NSE"},
-    "^BSESN": {"name": "Sensex",    "market": "NSE"},
-    "^GDAXI": {"name": "DAX",       "market": "XETRA"},
-    "^GSPC":  {"name": "S&P 500",   "market": "NYSE"},
+    "^NSEI":  {"name": "Nifty 50",    "market": "NSE"},
+    "^BSESN": {"name": "Sensex",      "market": "NSE"},
+    "^GDAXI": {"name": "DAX",         "market": "XETRA"},
+    "^GSPC":  {"name": "S&P 500",     "market": "NYSE"},
+    "^NDX":   {"name": "Nasdaq 100",  "market": "NASDAQ"},
 }
 
 _INDICES = list(_INDEX_META.keys())
@@ -43,7 +44,7 @@ class DataFetcher:
 
     def fetch_indices(self) -> dict[str, dict]:
         """
-        Fetch closing prices and % change for the 4 major indices.
+        Fetch closing prices and % change for the 5 major indices.
 
         Returns
         -------

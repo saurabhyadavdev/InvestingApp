@@ -98,8 +98,15 @@ def test_get_latest_returns_none_when_empty(db_path):
 # Test 3: GET /api/briefing with empty table returns 404
 # ---------------------------------------------------------------------------
 
-def test_get_briefing_endpoint_no_data(test_client):
+def test_get_briefing_endpoint_no_data(test_client, db_path):
     """GET /api/briefing with empty briefing_snapshots returns 404 with detail 'No briefing generated yet'."""
+    import sqlite3 as _sqlite3
+    # Wipe any rows inserted by startup auto-generation
+    conn = _sqlite3.connect(db_path)
+    conn.execute("DELETE FROM briefing_snapshots")
+    conn.commit()
+    conn.close()
+
     response = test_client.get("/api/briefing")
     assert response.status_code == 404
     body = response.json()

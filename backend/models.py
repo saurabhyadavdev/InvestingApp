@@ -81,3 +81,21 @@ class FXAlertRequest(BaseModel):
 class FXAlertResponse(BaseModel):
     alert_threshold: float
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Plan 04: Briefing orchestration models
+# ---------------------------------------------------------------------------
+
+class BriefingResponse(BaseModel):
+    portfolio: dict
+    indices: dict
+    fx: dict
+    generated_at: str
+    briefing_date: str
+    fetched_at: str
+
+
+class RefreshResponse(BaseModel):
+    status: str
+    generated_at: str

@@ -5,8 +5,10 @@ Portfolio endpoints:
 
 All SQL uses parameterized queries (? placeholders) — no f-string interpolation.
 """
-import tempfile
+import io
 import os
+import sqlite3 as _sqlite3
+import tempfile
 from datetime import datetime, timezone
 from typing import List
 
@@ -53,7 +55,6 @@ async def import_portfolio(
 
     # Write to temp file so csv.DictReader can open by path, OR pass as StringIO
     # We use io.StringIO to avoid temp file cleanup complexity
-    import io
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -78,12 +79,13 @@ async def import_portfolio(
 
 def _get_cached_fx_rate(db_path: str, fallback: float = 90.0) -> float:
     """Read the latest EUR/INR rate from the fx_rates table; fall back to default if unavailable."""
-    import sqlite3 as _sqlite3
     try:
         conn = _sqlite3.connect(db_path)
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT rate FROM fx_rates ORDER BY timestamp DESC LIMIT 1")
+            cursor.execute(
+                "SELECT rate FROM fx_rates WHERE pair = 'EURINR' ORDER BY timestamp DESC LIMIT 1"
+            )
             row = cursor.fetchone()
             if row:
                 return float(row[0])
@@ -96,7 +98,6 @@ def _get_cached_fx_rate(db_path: str, fallback: float = 90.0) -> float:
 
 def _get_cached_usdinr_rate(db_path: str, fallback: float = 83.0) -> float:
     """Read the latest USD/INR rate from the fx_rates table (pair='USDINR'); fall back to 83.0."""
-    import sqlite3 as _sqlite3
     try:
         conn = _sqlite3.connect(db_path)
         try:

@@ -53,7 +53,11 @@ function formatIST(isoTimestamp) {
  */
 function shouldShowRefresh(generatedAt) {
   const now = new Date();
-  if (now.getHours() >= 12) return true;
+  const istHour = parseInt(
+    now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }),
+    10
+  );
+  if (istHour >= 12) return true;
   if (!generatedAt) return false;
   const generated = new Date(generatedAt);
   const diffHours = (now - generated) / (1000 * 60 * 60);
@@ -254,7 +258,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           totalInr={totalInr}
           totalEur={totalEur}
           totalUsd={totalUsd}
-          fxRate={fx.rate || 90}
+          fxRate={fx.rate ?? 90}
         />
       </div>
 
@@ -263,7 +267,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
         <AllocationCard
           holdings={holdings}
           cashByBroker={cashByBroker}
-          fxRate={fx.rate || 90}
+          fxRate={fx.rate ?? 90}
         />
       </div>
 

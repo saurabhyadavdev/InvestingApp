@@ -74,4 +74,11 @@ def get_market_reference_date(market: str, as_of: datetime = None) -> str:
     else:
         ref_date = as_of_local.date()
 
+    # Roll back past weekends — markets are closed Saturday and Sunday
+    weekday = ref_date.weekday()  # Monday=0, Sunday=6
+    if weekday == 5:    # Saturday → roll back to Friday
+        ref_date -= timedelta(days=1)
+    elif weekday == 6:  # Sunday → roll back to Friday
+        ref_date -= timedelta(days=2)
+
     return ref_date.isoformat()

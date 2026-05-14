@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def _clean_numeric(value: str) -> float:
     """Strip currency symbols, commas, and whitespace from a string and parse as float."""
     cleaned = value.replace("₹", "").replace(",", "").replace(" ", "").strip()
-    if cleaned == "" or cleaned == "-":
+    if not cleaned or cleaned in ("-", "--", "N/A", "n/a", "NA"):
         return 0.0
     return float(cleaned)
 
@@ -238,7 +238,8 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
         if missing:
             raise ValueError(f"CSV missing required columns: {', '.join(sorted(missing))}")
 
-        # Aggregate by ISIN: {isin: {total_units, total_cost, name}}
+        # Aggregate by ISIN: {isin: {total_units, buy_cost, buy_units, name}}
+        # Sells only reduce net units; cost basis is computed from buy transactions only.
         aggregated: dict[str, dict] = {}
 
         for row in all_rows:
@@ -259,14 +260,14 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
                 continue
 
             if isin not in aggregated:
-                aggregated[isin] = {"total_units": 0.0, "total_cost": 0.0, "name": name}
+                aggregated[isin] = {"total_units": 0.0, "buy_cost": 0.0, "buy_units": 0.0, "name": name}
 
             if tx_type == "buy":
                 aggregated[isin]["total_units"] += qty
-                aggregated[isin]["total_cost"] += qty * price
-            else:  # sell
+                aggregated[isin]["buy_units"] += qty
+                aggregated[isin]["buy_cost"] += qty * price
+            else:  # sell — only reduce net units, never touch buy_cost
                 aggregated[isin]["total_units"] -= qty
-                aggregated[isin]["total_cost"] -= qty * price
 
         count = 0
 
@@ -277,21 +278,22 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
 
             for isin, agg in aggregated.items():
                 total_units = agg["total_units"]
-                total_cost = agg["total_cost"]
+                buy_cost = agg["buy_cost"]
+                buy_units = agg["buy_units"]
                 name = agg["name"]
 
                 if total_units <= 0:
                     continue  # fully sold
 
-                if total_cost < 0:
+                if buy_cost < 0:
                     logger.warning(
-                        "Negative total_cost for ISIN %s — skipping (data integrity issue)", isin
+                        "Negative buy_cost for ISIN %s — skipping (data integrity issue)", isin
                     )
                     continue
 
-                cost_per_unit = total_cost / total_units
-                asset_type = "etf" if "etf" in name.lower() else "equity"
+                cost_per_unit = buy_cost / buy_units if buy_units > 0 else 0.0
                 region = _classify_tr_region(isin)
+                asset_type = "etf" if ("etf" in name.lower() or region == "etf") else "equity"
 
                 cursor.execute("""
                     INSERT OR REPLACE INTO holdings
@@ -358,33 +360,33 @@ def get_portfolio_with_pl(
     """
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT
-            h.id,
-            h.broker,
-            h.ticker_local,
-            h.isin,
-            h.name,
-            h.units,
-            h.cost_per_unit,
-            h.currency,
-            h.region,
-            h.asset_type,
-            p.close  AS current_price,
-            p.date   AS price_date
-        FROM holdings h
-        LEFT JOIN price_history p ON h.ticker_yfinance = p.ticker
-            AND p.date = (
-                SELECT MAX(date) FROM price_history
-                WHERE ticker = h.ticker_yfinance
-            )
-        ORDER BY h.broker, h.region
-    """)
-
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                h.id,
+                h.broker,
+                h.ticker_local,
+                h.isin,
+                h.name,
+                h.units,
+                h.cost_per_unit,
+                h.currency,
+                h.region,
+                h.asset_type,
+                p.close  AS current_price,
+                p.date   AS price_date
+            FROM holdings h
+            LEFT JOIN price_history p ON h.ticker_yfinance = p.ticker
+                AND p.date = (
+                    SELECT MAX(date) FROM price_history
+                    WHERE ticker = h.ticker_yfinance
+                )
+            ORDER BY h.broker, h.region
+        """)
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
 
     holdings = []
     total_inr = 0.0
@@ -472,10 +474,12 @@ def get_portfolio_with_pl(
             total_inr += market_value
             total_usd += market_value / fx_rate_usdinr
 
+    has_live_prices = any(h.get("price_date") for h in holdings)
     return {
         "holdings": holdings,
         "total_inr": round(total_inr, 2),
         "total_eur": round(total_eur, 2),
         "total_usd": round(total_usd, 2),
         "cash_by_broker": cash_by_broker,
+        "total_basis": "market" if has_live_prices else "cost",
     }

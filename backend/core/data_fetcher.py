@@ -136,6 +136,75 @@ class DataFetcher:
 
         return results
 
+    def fetch_holding_prices(self, tickers: list[str]) -> dict[str, float]:
+        """
+        Fetch latest closing prices for portfolio holdings and cache to price_history.
+
+        Parameters
+        ----------
+        tickers : list[str]
+            yfinance ticker symbols (e.g. ["AAVAS.NS", "SAP.DE"]).
+            None/empty entries are skipped.
+
+        Returns
+        -------
+        dict
+            Keyed by ticker, value is latest close price (float).
+            Tickers that fail silently are omitted from the result.
+        """
+        valid = [t for t in tickers if t]
+        if not valid:
+            return {}
+
+        # Batch download — period="5d" catches recent trading days across timezones
+        try:
+            raw = yf.download(
+                tickers=" ".join(valid),
+                period="5d",
+                interval="1d",
+                progress=False,
+                threads=True,
+            )
+        except Exception as exc:
+            logger.warning("fetch_holding_prices: yfinance.download raised: %s", exc)
+            return {}
+
+        if raw is None or raw.empty:
+            logger.warning("fetch_holding_prices: yfinance returned empty DataFrame")
+            return {}
+
+        results: dict[str, float] = {}
+        conn = sqlite3.connect(self.db_path)
+        try:
+            for ticker in valid:
+                try:
+                    # Handle single vs multi-ticker DataFrame layout
+                    if ("Close", ticker) in raw.columns:
+                        df_sym = raw.xs(ticker, axis=1, level=1)
+                    elif len(valid) == 1 and "Close" in raw.columns:
+                        df_sym = raw
+                    else:
+                        logger.warning("fetch_holding_prices: no Close data for %s", ticker)
+                        continue
+
+                    df_sym = df_sym.sort_index(ascending=True).dropna(subset=["Close"])
+                    if df_sym.empty:
+                        continue
+
+                    close = float(df_sym["Close"].iloc[-1])
+                    results[ticker] = close
+                    self._cache_index_to_db(conn, ticker, df_sym)
+
+                except Exception as exc:
+                    logger.warning("fetch_holding_prices: failed for %s: %s", ticker, exc)
+                    continue
+        finally:
+            conn.commit()
+            conn.close()
+
+        logger.info("fetch_holding_prices: fetched %d/%d tickers", len(results), len(valid))
+        return results
+
     def fetch_fx_rate(self, pair: str = "EURINR=X") -> dict:
         """
         Fetch current EUR/INR rate from yfinance and cache to fx_rates.

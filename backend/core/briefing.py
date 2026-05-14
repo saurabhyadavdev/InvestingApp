@@ -76,7 +76,21 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: indices fetch failed: %s", exc)
             indices_data = {}
 
-        # Step 3: Portfolio P&L
+        # Step 3: Fetch current prices for all holdings, then compute P&L
+        try:
+            conn = sqlite3.connect(self.db_path)
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT ticker_yfinance FROM holdings WHERE ticker_yfinance IS NOT NULL"
+                ).fetchall()
+            finally:
+                conn.close()
+            holding_tickers = [r[0] for r in rows if r[0]]
+            if holding_tickers:
+                self.fetcher.fetch_holding_prices(holding_tickers)
+        except Exception as exc:
+            logger.warning("BriefingOrchestrator: holding price fetch failed: %s", exc)
+
         try:
             portfolio_data = get_portfolio_with_pl(
                 self.db_path,

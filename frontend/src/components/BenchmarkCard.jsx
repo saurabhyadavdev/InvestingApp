@@ -211,11 +211,11 @@ export default function BenchmarkCard({ benchmarkData }) {
         })}
       </div>
 
-      {/* Main comparison table: rows = windows, columns = metrics */}
+      {/* Main comparison table: single row for the selected period */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
         <thead>
           <tr>
-            <th style={headerStyle('left')}>Period</th>
+            <th style={headerStyle('left')}>Metric</th>
             <th style={headerStyle()}>My Portfolio</th>
             <th style={headerStyle()}>{INDEX_LABELS['^NSEI']}</th>
             <th style={headerStyle()}>{INDEX_LABELS['^GSPC']}</th>
@@ -223,31 +223,24 @@ export default function BenchmarkCard({ benchmarkData }) {
           </tr>
         </thead>
         <tbody>
-          {windows.map((period) => (
-            <tr
-              key={period}
-              style={{
-                background: period === activePeriod ? 'rgba(21,101,192,0.05)' : undefined,
-              }}
-            >
-              <td
-                style={{
-                  ...labelCellStyle(true),
-                  borderBottom: '1px solid var(--color-border)',
-                }}
-              >
-                {period}
-              </td>
-              {/* My Portfolio — no benchmark comparison for the total column */}
-              <BenchmarkCell pct={portfolio[period]} benchmarkPct={null} />
-              {/* vs Nifty 50 */}
-              <BenchmarkCell pct={portfolio[period]} benchmarkPct={nifty[period] ?? null} />
-              {/* vs S&P 500 */}
-              <BenchmarkCell pct={portfolio[period]} benchmarkPct={sp500[period] ?? null} />
-              {/* vs DAX */}
-              <BenchmarkCell pct={portfolio[period]} benchmarkPct={dax[period] ?? null} />
-            </tr>
-          ))}
+          <tr>
+            <td style={{ ...labelCellStyle(true), borderBottom: '1px solid var(--color-border)' }}>
+              Return ({w})
+            </td>
+            <BenchmarkCell pct={portfolio[w]} benchmarkPct={null} />
+            <BenchmarkCell pct={nifty[w] ?? null} benchmarkPct={null} />
+            <BenchmarkCell pct={sp500[w] ?? null} benchmarkPct={null} />
+            <BenchmarkCell pct={dax[w] ?? null} benchmarkPct={null} />
+          </tr>
+          <tr>
+            <td style={{ ...labelCellStyle(), borderBottom: '1px solid var(--color-border)' }}>
+              vs Index
+            </td>
+            <td style={{ ...labelCellStyle(), borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', textAlign: 'right', padding: '8px', fontFamily: 'monospace' }}>—</td>
+            <BenchmarkCell pct={portfolio[w]} benchmarkPct={nifty[w] ?? null} />
+            <BenchmarkCell pct={portfolio[w]} benchmarkPct={sp500[w] ?? null} />
+            <BenchmarkCell pct={portfolio[w]} benchmarkPct={dax[w] ?? null} />
+          </tr>
         </tbody>
       </table>
 
@@ -276,39 +269,27 @@ export default function BenchmarkCard({ benchmarkData }) {
           </tr>
         </thead>
         <tbody>
-          {/* India Holdings vs Nifty 50 */}
-          {windows.map((period) => (
-            <tr key={`india-${period}`}>
-              <td style={{ ...labelCellStyle(), borderBottom: '1px solid var(--color-border)' }}>
-                India {period}
-              </td>
-              {/* Raw India return (no benchmark col) */}
-              <BenchmarkCell pct={india[period] ?? null} benchmarkPct={null} />
-              {/* India vs Nifty 50 */}
-              <BenchmarkCell pct={india[period] ?? null} benchmarkPct={nifty[period] ?? null} />
-              {/* India vs S&P 500 — not meaningful, show dash */}
-              <DashCell />
-              {/* India vs DAX — not meaningful, show dash */}
-              <DashCell />
-            </tr>
-          ))}
+          {/* India Holdings vs Nifty 50 — active period only */}
+          <tr>
+            <td style={{ ...labelCellStyle(), borderBottom: '1px solid var(--color-border)' }}>
+              India ({w})
+            </td>
+            <BenchmarkCell pct={india[w] ?? null} benchmarkPct={null} />
+            <BenchmarkCell pct={india[w] ?? null} benchmarkPct={nifty[w] ?? null} />
+            <DashCell />
+            <DashCell />
+          </tr>
 
-          {/* Germany/US/ETF vs S&P 500 and DAX */}
-          {windows.map((period) => (
-            <tr key={`intl-${period}`}>
-              <td style={{ ...labelCellStyle(), borderBottom: '1px solid var(--color-border)' }}>
-                Intl {period}
-              </td>
-              {/* Raw international return */}
-              <BenchmarkCell pct={intl[period] ?? null} benchmarkPct={null} />
-              {/* Intl vs Nifty — not meaningful, show dash */}
-              <DashCell />
-              {/* Intl vs S&P 500 */}
-              <BenchmarkCell pct={intl[period] ?? null} benchmarkPct={sp500[period] ?? null} />
-              {/* Intl vs DAX */}
-              <BenchmarkCell pct={intl[period] ?? null} benchmarkPct={dax[period] ?? null} />
-            </tr>
-          ))}
+          {/* Germany/US/ETF vs S&P 500 and DAX — active period only */}
+          <tr>
+            <td style={{ ...labelCellStyle(), borderBottom: '1px solid var(--color-border)' }}>
+              Intl ({w})
+            </td>
+            <BenchmarkCell pct={intl[w] ?? null} benchmarkPct={null} />
+            <DashCell />
+            <BenchmarkCell pct={intl[w] ?? null} benchmarkPct={sp500[w] ?? null} />
+            <BenchmarkCell pct={intl[w] ?? null} benchmarkPct={dax[w] ?? null} />
+          </tr>
         </tbody>
       </table>
     </section>

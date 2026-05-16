@@ -49,14 +49,13 @@ async def get_indices():
             indices_list = [
                 {
                     "symbol": sym,
-                    "name": v["name"],
-                    "close": v["close"],
-                    "change_pct": v["change_pct"],
-                    "date": v["date"],
-                    "market_label": v["market_label"],
+                    "name": data[sym]["name"],
+                    "close": data[sym]["close"],
+                    "change_pct": data[sym]["change_pct"],
+                    "date": data[sym]["date"],
+                    "market_label": data[sym]["market_label"],
                 }
                 for sym in _SYMBOL_ORDER
-                for v in [data[sym]]
                 if sym in data
             ]
             return {"indices": indices_list, "fetched_at": fetched_at}

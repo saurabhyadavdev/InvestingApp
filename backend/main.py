@@ -28,6 +28,7 @@ from backend.api.fx import router as fx_router
 from backend.api.briefing import router as briefing_router
 from backend.api.refresh import router as refresh_router
 from backend.scheduler import init_scheduler
+from backend.core.briefing import BriefingOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,6 @@ async def lifespan(app: FastAPI):
 
     # Generate a briefing immediately on first startup if none exists
     try:
-        from backend.core.briefing import BriefingOrchestrator
         orchestrator = BriefingOrchestrator(settings.DB_PATH)
         latest = orchestrator.get_latest()
         if latest is None:

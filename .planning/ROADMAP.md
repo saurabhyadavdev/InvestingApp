@@ -78,7 +78,7 @@ Plans:
 9. Chat responses reference only the current briefing data with no hallucinated facts or invented data
 10. User can see cash deployment suggestions based on idle cash balance and market conditions
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -88,7 +88,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [ ] 02-02-PLAN.md — Backend pipeline: fetch_signals() + fetch_news() on DataFetcher; briefing steps 4+5 (SIG-01, MKT-04–07)
-- [ ] 02-03-PLAN.md — Frontend intelligence UI: PortfolioTable Rec badge + expandable row; NewsCard 4-tab; Dashboard Market Intelligence section (SIG-01, MKT-04–07)
+- [x] 02-03-PLAN.md — Frontend intelligence UI: PortfolioTable Rec badge + expandable row; NewsCard 4-tab; Dashboard Market Intelligence section (SIG-01, MKT-04–07)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -103,7 +103,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
-| 2. Intelligence & Chat | 1/4 | In Progress|  |
+| 2. Intelligence & Chat | 2/4 | In Progress|  |
 
 ---
 

@@ -20,10 +20,10 @@
 - [x] **MKT-01**: User can see yesterday's closing performance for Nifty 50 and Sensex (direction + % change)
 - [x] **MKT-02**: User can see yesterday's closing performance for DAX (direction + % change)
 - [x] **MKT-03**: User can see yesterday's closing performance for S&P 500 (direction + % change)
-- [ ] **MKT-04**: User can see news filtered to companies in their portfolio (holdings-specific news)
-- [ ] **MKT-05**: User can see India macro news (RBI, budget, inflation, sector moves)
-- [ ] **MKT-06**: User can see Germany/EU macro news (ECB, German economy, DAX events)
-- [ ] **MKT-07**: User can see US macro news (Fed, earnings season, global events affecting US stocks/ETFs)
+- [x] **MKT-04**: User can see news filtered to companies in their portfolio (holdings-specific news)
+- [x] **MKT-05**: User can see India macro news (RBI, budget, inflation, sector moves)
+- [x] **MKT-06**: User can see Germany/EU macro news (ECB, German economy, DAX events)
+- [x] **MKT-07**: User can see US macro news (Fed, earnings season, global events affecting US stocks/ETFs)
 
 ### FX & Cash Management
 
@@ -34,7 +34,7 @@
 
 ### Signals & Recommendations
 
-- [ ] **SIG-01**: User can see RSI, MACD, and moving average values per holding
+- [x] **SIG-01**: User can see RSI, MACD, and moving average values per holding
 - [ ] **SIG-02**: User can see analyst consensus rating (Buy/Hold/Sell) and average price target per holding
 - [ ] **SIG-03**: User can see a Buy/Sell/Hold recommendation per holding combining technical + analyst signals
 - [ ] **SIG-04**: User can see a plain-English AI synthesis explaining the recommendation for each holding
@@ -96,11 +96,11 @@
 | FX-01 | Phase 1 | Complete |
 | FX-02 | Phase 1 | Complete |
 | FX-03 | Phase 1 | Complete |
-| MKT-04 | Phase 2 | Pending |
-| MKT-05 | Phase 2 | Pending |
-| MKT-06 | Phase 2 | Pending |
-| MKT-07 | Phase 2 | Pending |
-| SIG-01 | Phase 2 | Pending |
+| MKT-04 | Phase 2 | Complete |
+| MKT-05 | Phase 2 | Complete |
+| MKT-06 | Phase 2 | Complete |
+| MKT-07 | Phase 2 | Complete |
+| SIG-01 | Phase 2 | Complete |
 | SIG-02 | Phase 2 | Pending |
 | SIG-03 | Phase 2 | Pending |
 | SIG-04 | Phase 2 | Pending |

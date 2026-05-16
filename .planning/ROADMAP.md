@@ -11,7 +11,7 @@
 
 - [x] **Phase 1: Core Daily Briefing** — Unified portfolio import and morning briefing with market indices
 - [x] **Phase 2: Intelligence & Chat** — News, technical signals, AI synthesis, and chat interface (completed 2026-05-16)
-- [ ] **Phase 3: Polish** — Heat map, price/signal alerts, benchmark comparison
+- [x] **Phase 3: Polish** — Heat map, price/signal alerts, benchmark comparison (completed 2026-05-16)
 
 ---
 
@@ -122,7 +122,7 @@ Plans:
 9. Benchmark table compares My Portfolio %, Nifty 50, S&P 500, and DAX; regional rows compare India sub-portfolio vs Nifty and Germany/US/ETF vs S&P/DAX
 10. Benchmark cells render green when portfolio beats the index, red when it lags, and "—" when historical data is unavailable
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -135,7 +135,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion — modifies briefing.py + Dashboard.jsx + PortfolioTable.jsx)*
 
-- [ ] 03-03-PLAN.md — Alerts vertical slice: alert_evaluator + briefing step 4.5 + POST/GET /api/alerts + SettingsModal + AlertsBanner + PortfolioTable highlighting + browser Notification (D-05–D-07)
+- [x] 03-03-PLAN.md — Alerts vertical slice: alert_evaluator + briefing step 4.5 + POST/GET /api/alerts + SettingsModal + AlertsBanner + PortfolioTable highlighting + browser Notification (D-05–D-07)
 
 **UI hint:** yes
 
@@ -147,7 +147,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
 | 2. Intelligence & Chat | 4/4 | Complete   | 2026-05-16 |
-| 3. Polish              | 2/3 | In Progress|  |
+| 3. Polish              | 3/3 | Complete   | 2026-05-16 |
 
 ---
 

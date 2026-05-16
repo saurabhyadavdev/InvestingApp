@@ -20,6 +20,7 @@ import PortfolioTable from './components/PortfolioTable.jsx';
 import AllocationCard from './components/AllocationCard.jsx';
 import HeatMapCard from './components/HeatMapCard.jsx';
 import IndicesCard from './components/IndicesCard.jsx';
+import BenchmarkCard from './components/BenchmarkCard.jsx';
 import FXCard from './components/FXCard.jsx';
 import NewsCard from './components/NewsCard.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
@@ -285,6 +286,11 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           Market Indices
         </div>
         <IndicesCard indices={indicesArray} />
+      </div>
+
+      {/* Benchmark Comparison */}
+      <div className="portfolio-section">
+        <BenchmarkCard benchmarkData={briefing?.benchmark_data} />
       </div>
 
       {/* EUR/INR Rate */}

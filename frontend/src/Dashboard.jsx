@@ -20,6 +20,7 @@ import PortfolioTable from './components/PortfolioTable.jsx';
 import AllocationCard from './components/AllocationCard.jsx';
 import IndicesCard from './components/IndicesCard.jsx';
 import FXCard from './components/FXCard.jsx';
+import NewsCard from './components/NewsCard.jsx';
 
 /**
  * Format a UTC ISO timestamp to "HH:MM IST, YYYY-MM-DD" for the footer.
@@ -197,7 +198,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
   const dateLabel = formatBriefingDate(briefing_date);
 
   return (
-    <div className="page">
+    <div className="page" style={{ paddingBottom: '44px' }}>
       {/* Header */}
       <div
         className="header"
@@ -290,6 +291,14 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
         />
       </div>
 
+      {/* Market Intelligence */}
+      <div className="portfolio-section">
+        <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
+          Market Intelligence
+        </div>
+        <NewsCard briefing={briefing} />
+      </div>
+
       {/* Footer — Data Status */}
       <footer
         style={{
@@ -320,6 +329,19 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
         </svg>
         Last updated: {formatIST(fetched_at || generated_at)}
       </footer>
+      {/* ChatPanel placeholder — replaced by full implementation in Plan 04 */}
+      <div
+        style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          height: '44px', background: '#1A1A2E',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'center',
+          paddingLeft: '24px', cursor: 'pointer', zIndex: 100,
+          fontSize: '14px', color: 'rgba(255,255,255,0.8)', fontWeight: 400,
+        }}
+      >
+        Ask me anything about today's briefing.
+      </div>
     </div>
   );
 }

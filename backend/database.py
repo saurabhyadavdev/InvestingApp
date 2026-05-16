@@ -118,5 +118,31 @@ def create_schema(db_path: str) -> None:
         )
     """)
 
+    # News cache: stores fetched news articles per query+date
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS news_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            query TEXT NOT NULL,
+            date TEXT NOT NULL,
+            articles_json TEXT NOT NULL,
+            cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(query, date)
+        )
+    """)
+
+    # Analyst cache: stores analyst ratings and price targets per symbol+date
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS analyst_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            date TEXT NOT NULL,
+            rating TEXT,
+            target_mean REAL,
+            num_analysts INTEGER,
+            cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(symbol, date)
+        )
+    """)
+
     conn.commit()
     conn.close()

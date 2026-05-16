@@ -246,13 +246,31 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
     """
     Parse a Trade Republic CSV (file path or file-like) and insert holdings.
 
-    Required columns: Date, Type, ISIN, Quantity, Price per Unit
-    Aggregates Buy/Sell rows by ISIN (weighted avg cost basis).
-    Skips ISINs with total_units <= 0 (fully sold positions).
+    Supports two TR export formats:
+      Legacy: Date, Type, ISIN, Quantity, Price per Unit, Security name
+      New:    datetime/date, type, symbol, shares, price, name, asset_class, category
+
+    Aggregates buy/sell rows by ISIN/symbol (weighted avg cost basis).
+    Skips positions with total_units <= 0 (fully sold).
 
     Returns: count of rows inserted.
-    Raises: ValueError if required columns are missing.
+    Raises: ValueError if required columns are missing from both formats.
     """
+    # Column aliases: new TR format → internal field names
+    _TR_ALIASES = {
+        "datetime": "Date",
+        "date": "Date",
+        "type": "Type",
+        "category": "Type",       # fallback if 'type' missing
+        "symbol": "ISIN",         # new format uses symbol instead of ISIN
+        "isin": "ISIN",
+        "shares": "Quantity",
+        "quantity": "Quantity",
+        "price": "Price per Unit",
+        "price per unit": "Price per Unit",
+        "name": "Security name",
+        "asset_class": "asset_class",
+    }
     required_cols = {"Date", "Type", "ISIN", "Quantity", "Price per Unit"}
 
     if isinstance(source, str):
@@ -265,35 +283,64 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
     try:
         reader = csv.DictReader(file_obj)
         all_rows = list(reader)
-        fieldnames = set(reader.fieldnames or [])
+        raw_fieldnames = set(reader.fieldnames or [])
 
-        missing = required_cols - fieldnames
+        # Normalise header: lowercase lookup for alias matching
+        col_map = {}  # raw_col → internal_name
+        for raw in raw_fieldnames:
+            internal = _TR_ALIASES.get(raw.strip().lower())
+            if internal:
+                col_map[raw] = internal
+
+        def _get(row, internal):
+            """Get a value by internal field name, trying all aliased raw keys."""
+            for raw, mapped in col_map.items():
+                if mapped == internal:
+                    val = row.get(raw)
+                    if val is not None:
+                        return val
+            return None
+
+        mapped_fieldnames = set(col_map.values())
+        missing = required_cols - mapped_fieldnames
         if missing:
             raise ValueError(f"CSV missing required columns: {', '.join(sorted(missing))}")
 
-        # Aggregate by ISIN: {isin: {total_units, buy_cost, buy_units, name}}
+        # Detect new format: 'symbol' used instead of 'ISIN' (no real ISIN in the file)
+        new_format = "symbol" in {k.strip().lower() for k in raw_fieldnames}
+
+        # Aggregate by ISIN/symbol: {key: {total_units, buy_cost, buy_units, name}}
         # Sells only reduce net units; cost basis is computed from buy transactions only.
         aggregated: dict[str, dict] = {}
 
         for row in all_rows:
-            tx_type = (row.get("Type") or "").strip().lower()
-            if tx_type not in ("buy", "sell"):
-                continue
+            tx_type = (_get(row, "Type") or "").strip().lower()
 
-            isin = (row.get("ISIN") or "").strip()
+            # New format uses 'order' category for buy/sell; type field has 'buy'/'sell'
+            # Also handle 'savings_plan' as buy
+            if tx_type not in ("buy", "sell", "savings_plan"):
+                continue
+            if tx_type == "savings_plan":
+                tx_type = "buy"
+
+            isin = (_get(row, "ISIN") or "").strip()
             if not isin:
                 continue
 
-            name = (row.get("Security name") or "").strip()
+            name = (_get(row, "Security name") or "").strip()
+            asset_class = (row.get("asset_class") or "").strip().lower() if new_format else ""
 
             try:
-                qty = _clean_numeric(row.get("Quantity") or "0")
-                price = _clean_numeric(row.get("Price per Unit") or "0")
+                qty = _clean_numeric(_get(row, "Quantity") or "0")
+                price = _clean_numeric(_get(row, "Price per Unit") or "0")
             except ValueError:
                 continue
 
             if isin not in aggregated:
-                aggregated[isin] = {"total_units": 0.0, "buy_cost": 0.0, "buy_units": 0.0, "name": name}
+                aggregated[isin] = {"total_units": 0.0, "buy_cost": 0.0, "buy_units": 0.0, "name": name, "symbol": isin, "asset_class": asset_class}
+            # Keep the symbol separate from isin for new-format files
+            if new_format:
+                aggregated[isin]["symbol"] = isin  # isin field holds the symbol in new format
 
             if tx_type == "buy":
                 aggregated[isin]["total_units"] += qty
@@ -326,7 +373,18 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
 
                 cost_per_unit = buy_cost / buy_units if buy_units > 0 else 0.0
                 region = _classify_tr_region(isin)
-                asset_type = "etf" if ("etf" in name.lower() or region == "etf") else "equity"
+                # New format provides asset_class directly; fall back to name/region heuristic
+                agg_asset_class = agg.get("asset_class", "")
+                if agg_asset_class in ("fund", "etf"):
+                    asset_type = "etf"
+                elif "etf" in name.lower() or region == "etf":
+                    asset_type = "etf"
+                else:
+                    asset_type = "equity"
+
+                # In new format, symbol is the ticker (e.g. "AAPL"), not ISIN.
+                # Store symbol as ticker_local; isin column gets the value too for backward compat.
+                ticker_local = agg.get("symbol") or isin
 
                 cursor.execute("""
                     INSERT OR REPLACE INTO holdings
@@ -335,9 +393,9 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     "trade_republic",
-                    isin,          # use ISIN as ticker_local for TR (no exchange ticker)
-                    isin,
-                    None,          # ticker_yfinance mapped in Plan 03 via ISIN lookup
+                    ticker_local,
+                    isin,          # isin may equal symbol in new format — still stored
+                    None,          # ticker_yfinance mapped later via ISIN lookup
                     name or None,
                     round(total_units, 6),
                     round(cost_per_unit, 6),

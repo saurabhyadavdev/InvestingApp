@@ -32,7 +32,11 @@ const REC_STYLES = {
   HOLD: { background: '#6C757D', color: '#fff' },
 };
 
-export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd = 0, fxRate = 90 }) {
+export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd = 0, fxRate = 90, alertTickers }) {
+  // Normalise alertTickers to a Set for O(1) lookup
+  const _alertSet = alertTickers instanceof Set
+    ? alertTickers
+    : new Set(alertTickers || []);
   const [expandedId, setExpandedId] = useState(null);
 
   if (!holdings || holdings.length === 0) {
@@ -94,7 +98,12 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
               <React.Fragment key={rowKey}>
                 <tr
                   onClick={() => setExpandedId(expandedId === h.id ? null : h.id)}
-                  style={{ cursor: 'pointer' }}
+                  style={{
+                    cursor: 'pointer',
+                    background: (_alertSet.has(h.ticker_yfinance) || _alertSet.has(h.ticker))
+                      ? 'rgba(255, 193, 7, 0.12)'
+                      : undefined,
+                  }}
                 >
                   <td>{h.ticker}</td>
                   <td>{formatNum(h.quantity, 4)}</td>

@@ -108,6 +108,39 @@ export async function sendChat(message, briefing) {
   return data.response;
 }
 
+/**
+ * saveAlertSettings — POST /api/alerts to persist alert configuration.
+ * @param {object} settings - Alert settings payload
+ * @returns {Promise<{ok: boolean}>}
+ */
+export async function saveAlertSettings(settings) {
+  const response = await fetch('/api/alerts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+    const detail = errorBody.detail || response.statusText;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return response.json();
+}
+
+/**
+ * fetchAlertSettings — GET /api/alerts to read current alert configuration.
+ * @returns {Promise<object>} Alert settings in the same shape as the POST body
+ */
+export async function fetchAlertSettings() {
+  const response = await fetch('/api/alerts');
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+    const detail = errorBody.detail || response.statusText;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return response.json();
+}
+
 export async function importCSV(broker, file) {
   const formData = new FormData();
   formData.append('broker', broker);

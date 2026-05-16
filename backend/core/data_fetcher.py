@@ -9,13 +9,17 @@ Security note (T-03-02, T-03-04):
   - All SQL uses parameterized ? placeholders — no f-string SQL.
   - Results cached with INSERT OR REPLACE; stale data served if yfinance fails.
 """
+import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+import ta
 import yfinance as yf
+from newsapi import NewsApiClient
 
+from backend.config import settings
 from backend.core.timezone_utils import get_market_reference_date
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,72 @@ _INDEX_META: dict = {
 }
 
 _INDICES = list(_INDEX_META.keys())
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers (used by DataFetcher methods)
+# ---------------------------------------------------------------------------
+
+def _null_signals() -> dict:
+    """Return a signals dict with all values set to None."""
+    return {
+        "rsi_14": None,
+        "macd": None,
+        "macd_signal": None,
+        "macd_histogram": None,
+        "sma_50": None,
+        "sma_200": None,
+    }
+
+
+def _cache_signals(conn: sqlite3.Connection, ticker: str, today_str: str, sig: dict) -> None:
+    """INSERT OR REPLACE a technical_indicators row using parameterized ? placeholders."""
+    try:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO technical_indicators
+                (ticker, date, rsi_14, macd, macd_signal, macd_histogram, sma_50, sma_200)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                ticker,
+                today_str,
+                sig["rsi_14"],
+                sig["macd"],
+                sig["macd_signal"],
+                sig["macd_histogram"],
+                sig["sma_50"],
+                sig["sma_200"],
+            ),
+        )
+    except Exception as exc:
+        logger.warning("_cache_signals: DB write failed for %s: %s", ticker, exc)
+
+
+def _format_time_ago(published_at_str: str) -> str:
+    """
+    Parse a NewsAPI ISO 8601 publishedAt string and return a human-readable
+    relative time string: "Xm ago", "Xh ago", or "Xd ago".
+    """
+    if not published_at_str:
+        return ""
+    try:
+        # NewsAPI format: "2024-01-15T10:30:00Z"
+        pub_dt = datetime.fromisoformat(published_at_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        delta = now - pub_dt
+        total_seconds = int(delta.total_seconds())
+        if total_seconds < 3600:
+            minutes = max(1, total_seconds // 60)
+            return f"{minutes}m ago"
+        elif total_seconds < 86400:
+            hours = total_seconds // 3600
+            return f"{hours}h ago"
+        else:
+            days = total_seconds // 86400
+            return f"{days}d ago"
+    except Exception:
+        return ""
 
 
 class DataFetcher:
@@ -253,6 +323,231 @@ class DataFetcher:
 
         # Cache to fx_rates table
         self._cache_fx_to_db(canonical_pair, rate, low, high, ts_str)
+
+        return result
+
+    def fetch_signals(self, tickers: list) -> dict:
+        """
+        Compute RSI-14, MACD, SMA50, SMA200 for each ticker using 6 months of OHLCV data.
+
+        Parameters
+        ----------
+        tickers : list[str]
+            yfinance ticker symbols.
+
+        Returns
+        -------
+        dict
+            Keyed by ticker. Each value is a dict with keys:
+              rsi_14, macd, macd_signal, macd_histogram, sma_50, sma_200 (float or None).
+
+        Behaviour
+        ---------
+        - Batch-downloads 6mo OHLCV via yf.download (same pattern as fetch_indices).
+        - Tickers with <15 close rows get all-None signals (no crash).
+        - Tickers with >=15 but <200 rows get None only for indicators that need more rows.
+        - Results cached to technical_indicators via INSERT OR REPLACE with ? placeholders (T-02-07).
+        """
+        valid = [t for t in tickers if t]
+        if not valid:
+            return {}
+
+        try:
+            raw = yf.download(
+                tickers=" ".join(valid),
+                period="6mo",
+                auto_adjust=True,
+                threads=True,
+                progress=False,
+            )
+        except Exception as exc:
+            logger.error("fetch_signals: yfinance.download raised: %s", exc)
+            return {}
+
+        if raw is None or raw.empty:
+            logger.warning("fetch_signals: yfinance returned empty DataFrame")
+            return {}
+
+        results: dict = {}
+        today_str = date.today().isoformat()
+        conn = sqlite3.connect(self.db_path)
+        try:
+            for ticker in valid:
+                try:
+                    # Extract single-symbol Close series — handle multi vs single layout
+                    if ("Close", ticker) in raw.columns:
+                        close_raw = raw.xs(ticker, axis=1, level=1)["Close"]
+                    elif len(valid) == 1 and "Close" in raw.columns:
+                        close_raw = raw["Close"]
+                    else:
+                        logger.warning("fetch_signals: no Close data for %s", ticker)
+                        results[ticker] = _null_signals()
+                        continue
+
+                    close = close_raw.dropna()
+
+                    if len(close) < 15:
+                        logger.warning(
+                            "fetch_signals: insufficient rows for %s (got %d, need >= 15)",
+                            ticker, len(close),
+                        )
+                        results[ticker] = _null_signals()
+                        _cache_signals(conn, ticker, today_str, _null_signals())
+                        continue
+
+                    sig = _null_signals()
+
+                    # RSI-14
+                    try:
+                        rsi_val = ta.momentum.RSIIndicator(close=close, window=14).rsi().iloc[-1]
+                        sig["rsi_14"] = None if (rsi_val != rsi_val) else round(float(rsi_val), 2)
+                    except Exception as exc:
+                        logger.warning("fetch_signals: RSI failed for %s: %s", ticker, exc)
+
+                    # MACD (needs >= 26 rows)
+                    if len(close) >= 26:
+                        try:
+                            macd_obj = ta.trend.MACD(close=close)
+                            macd_val = macd_obj.macd().iloc[-1]
+                            signal_val = macd_obj.macd_signal().iloc[-1]
+                            hist_val = macd_obj.macd_diff().iloc[-1]
+                            sig["macd"] = None if (macd_val != macd_val) else round(float(macd_val), 4)
+                            sig["macd_signal"] = None if (signal_val != signal_val) else round(float(signal_val), 4)
+                            sig["macd_histogram"] = None if (hist_val != hist_val) else round(float(hist_val), 4)
+                        except Exception as exc:
+                            logger.warning("fetch_signals: MACD failed for %s: %s", ticker, exc)
+
+                    # SMA-50 (needs >= 50 rows)
+                    if len(close) >= 50:
+                        try:
+                            sma50_val = ta.trend.SMAIndicator(close=close, window=50).sma_indicator().iloc[-1]
+                            sig["sma_50"] = None if (sma50_val != sma50_val) else round(float(sma50_val), 2)
+                        except Exception as exc:
+                            logger.warning("fetch_signals: SMA50 failed for %s: %s", ticker, exc)
+
+                    # SMA-200 (needs >= 200 rows)
+                    if len(close) >= 200:
+                        try:
+                            sma200_val = ta.trend.SMAIndicator(close=close, window=200).sma_indicator().iloc[-1]
+                            sig["sma_200"] = None if (sma200_val != sma200_val) else round(float(sma200_val), 2)
+                        except Exception as exc:
+                            logger.warning("fetch_signals: SMA200 failed for %s: %s", ticker, exc)
+
+                    results[ticker] = sig
+                    _cache_signals(conn, ticker, today_str, sig)
+
+                except Exception as exc:
+                    logger.warning("fetch_signals: failed for %s: %s", ticker, exc)
+                    continue
+        finally:
+            conn.commit()
+            conn.close()
+
+        logger.info("fetch_signals: computed signals for %d/%d tickers", len(results), len(valid))
+        return results
+
+    def fetch_news(self, tickers: list, holding_names: list) -> dict:
+        """
+        Fetch news headlines from NewsAPI for holdings and three macro themes.
+
+        Parameters
+        ----------
+        tickers : list[str]
+            yfinance ticker symbols (used for cache key derivation only).
+        holding_names : list[str]
+            Human-readable holding names used to build the holdings news query.
+
+        Returns
+        -------
+        dict
+            Keys: holdings (list), india (list), germany (list), us (list).
+            Each list contains up to 5 article dicts:
+              title (str), url (str), source (str), time_ago (str).
+
+        Behaviour
+        ---------
+        - Returns empty lists for all tabs if NEWSAPI_KEY is unset.
+        - Uses date-keyed cache in news_cache to prevent re-fetching same day's results.
+        - Each NewsAPI call is individually wrapped in try/except (fail-open).
+        - All SQL uses parameterized ? placeholders — no f-string SQL (T-02-05).
+        """
+        empty = {"holdings": [], "india": [], "germany": [], "us": []}
+
+        if not settings.NEWSAPI_KEY:
+            logger.warning("fetch_news: NEWSAPI_KEY not set — returning empty news")
+            return empty
+
+        today_str = date.today().isoformat()
+        newsapi = NewsApiClient(api_key=settings.NEWSAPI_KEY)
+        from_date = (date.today() - timedelta(days=2)).isoformat()
+
+        # Build queries
+        if holding_names:
+            holdings_query = " OR ".join(holding_names[:3])
+        else:
+            holdings_query = " OR ".join(tickers[:3]) if tickers else "stocks"
+
+        tab_queries = {
+            "holdings": holdings_query,
+            "india": "India economy OR RBI OR Nifty OR NSE OR budget India",
+            "germany": "Germany economy OR ECB OR DAX OR Bundesbank OR euro zone",
+            "us": "Federal Reserve OR S&P500 OR Nasdaq OR US stocks OR earnings",
+        }
+
+        result = {}
+        conn = sqlite3.connect(self.db_path)
+        try:
+            for tab, query in tab_queries.items():
+                # Check cache first
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT articles_json FROM news_cache WHERE query = ? AND date = ?",
+                        (query, today_str),
+                    )
+                    cached_row = cursor.fetchone()
+                    if cached_row:
+                        result[tab] = json.loads(cached_row[0])
+                        logger.info("fetch_news: cache hit for tab=%s", tab)
+                        continue
+                except Exception as exc:
+                    logger.warning("fetch_news: cache read failed for tab=%s: %s", tab, exc)
+
+                # Fetch from NewsAPI
+                articles_list = []
+                try:
+                    response = newsapi.get_everything(
+                        q=query,
+                        from_param=from_date,
+                        language="en",
+                        sort_by="relevancy",
+                        page_size=5,
+                    )
+                    articles = response.get("articles", []) or []
+                    for article in articles[:5]:
+                        articles_list.append({
+                            "title": article.get("title", ""),
+                            "url": article.get("url", ""),
+                            "source": (article.get("source") or {}).get("name", ""),
+                            "time_ago": _format_time_ago(article.get("publishedAt", "")),
+                        })
+                except Exception as exc:
+                    logger.warning("fetch_news: NewsAPI call failed for tab=%s: %s", tab, exc)
+
+                result[tab] = articles_list
+
+                # Cache result
+                try:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO news_cache (query, date, articles_json) VALUES (?, ?, ?)",
+                        (query, today_str, json.dumps(articles_list)),
+                    )
+                except Exception as exc:
+                    logger.warning("fetch_news: cache write failed for tab=%s: %s", tab, exc)
+
+            conn.commit()
+        finally:
+            conn.close()
 
         return result
 

@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from backend.core.data_fetcher import DataFetcher
 from backend.core.portfolio import compute_daily_pct, get_portfolio_with_pl
 from backend.core.ai_synthesis import synthesise_holdings
+from backend.core.alert_evaluator import evaluate_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,22 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: analyst fetch failed: %s", exc)
             analyst_data = {}
 
+        # Step 6.5: Alert evaluation — runs after analyst (analyst-change detection needs analyst_curr)
+        try:
+            alert_settings = self._load_alert_settings()
+            analyst_prev = self._load_yesterday_analyst()
+            analyst_curr_map = analyst_data or {}
+            alerts_fired = evaluate_alerts(
+                portfolio_data.get("holdings", []),
+                signals_data or {},
+                analyst_prev,
+                analyst_curr_map,
+                alert_settings,
+            )
+        except Exception as exc:
+            logger.error("BriefingOrchestrator: alert evaluation failed: %s", exc)
+            alerts_fired = []
+
         # Step 7 — AI synthesis: enrich holdings with rec + ai_narrative via Claude Haiku 4.5
         try:
             cash_by_broker = portfolio_data.get("cash_by_broker", {})
@@ -188,6 +205,7 @@ class BriefingOrchestrator:
             "indices": indices_data,
             "fx": fx_data,
             "news": news_data,
+            "alerts_fired": alerts_fired,
             "generated_at": generated_at,
             "briefing_date": briefing_date,
         }
@@ -215,6 +233,57 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: failed to store briefing: %s", exc)
 
         return briefing
+
+    # ---------------------------------------------------------------------------
+    # Alert helpers
+    # ---------------------------------------------------------------------------
+
+    def _load_alert_settings(self) -> dict:
+        """
+        Read all alert_* keys from the settings table.
+
+        Returns a dict of {key: value} for keys starting with 'alert_'.
+        Returns {} on any error.
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute("SELECT key, value FROM settings").fetchall()
+        finally:
+            conn.close()
+        return {k: v for k, v in rows if k.startswith("alert_")}
+
+    def _load_yesterday_analyst(self) -> dict:
+        """
+        Query analyst_cache for the most recent date strictly before today.
+
+        Returns a dict keyed by symbol: {"rating": str, "target": float}.
+        Returns {} on any error or if no historical data exists.
+        """
+        from datetime import date as _date
+        today_str = _date.today().isoformat()
+        try:
+            conn = sqlite3.connect(self.db_path)
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT symbol, rating, target_mean
+                    FROM analyst_cache
+                    WHERE date = (
+                        SELECT MAX(date) FROM analyst_cache WHERE date < ?
+                    )
+                    """,
+                    (today_str,),
+                ).fetchall()
+            finally:
+                conn.close()
+            return {
+                row[0]: {"rating": row[1], "target": row[2]}
+                for row in rows
+                if row[0]
+            }
+        except Exception as exc:
+            logger.warning("BriefingOrchestrator: _load_yesterday_analyst failed: %s", exc)
+            return {}
 
     def get_latest(self) -> Optional[dict]:
         """

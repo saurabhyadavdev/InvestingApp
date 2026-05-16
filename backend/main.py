@@ -28,6 +28,7 @@ from backend.api.fx import router as fx_router
 from backend.api.briefing import router as briefing_router
 from backend.api.refresh import router as refresh_router
 from backend.api.chat import router as chat_router
+from backend.api.alerts import router as alerts_router
 from backend.scheduler import init_scheduler
 from backend.core.briefing import BriefingOrchestrator
 
@@ -85,6 +86,7 @@ app.include_router(fx_router)
 app.include_router(briefing_router)
 app.include_router(refresh_router)
 app.include_router(chat_router)
+app.include_router(alerts_router)
 
 
 if __name__ == "__main__":

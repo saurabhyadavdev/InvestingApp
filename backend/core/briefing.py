@@ -169,6 +169,13 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: AI synthesis failed: %s", exc)
             # holdings remain with signals already merged from step 4; rec/ai_narrative will be None
 
+        # Step 7.5: Benchmark comparison — price-window returns for portfolio, indices, regional buckets
+        try:
+            benchmark_data = self.fetcher.fetch_benchmark(portfolio_data.get("holdings", []))
+        except Exception as exc:
+            logger.error("BriefingOrchestrator: benchmark fetch failed: %s", exc)
+            benchmark_data = {}
+
         # Step 8: Assemble briefing
         now_utc = datetime.now(timezone.utc)
         now_ist = now_utc.astimezone(_IST)
@@ -177,6 +184,7 @@ class BriefingOrchestrator:
 
         briefing = {
             "portfolio": portfolio_data,
+            "benchmark_data": benchmark_data,
             "indices": indices_data,
             "fx": fx_data,
             "news": news_data,

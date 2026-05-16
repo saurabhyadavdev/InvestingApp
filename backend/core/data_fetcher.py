@@ -41,6 +41,31 @@ _INDICES = list(_INDEX_META.keys())
 # Module-level helpers (used by DataFetcher methods)
 # ---------------------------------------------------------------------------
 
+def _window_start(window: str) -> date:
+    """Return the start date for a benchmark window.
+
+    Parameters
+    ----------
+    window : str
+        One of "1M", "3M", "YTD", "1Y".
+
+    Raises
+    ------
+    ValueError
+        If window is not one of the supported values.
+    """
+    today = date.today()
+    if window == "1M":
+        return today - timedelta(days=30)
+    if window == "3M":
+        return today - timedelta(days=90)
+    if window == "YTD":
+        return date(today.year, 1, 1)
+    if window == "1Y":
+        return today - timedelta(days=365)
+    raise ValueError(f"Unknown window: {window}")
+
+
 def _null_signals() -> dict:
     """Return a signals dict with all values set to None."""
     return {
@@ -356,7 +381,7 @@ class DataFetcher:
         try:
             raw = yf.download(
                 tickers=" ".join(valid),
-                period="6mo",
+                period="1y",
                 auto_adjust=True,
                 threads=True,
                 progress=False,
@@ -482,11 +507,17 @@ class DataFetcher:
         newsapi = NewsApiClient(api_key=settings.NEWSAPI_KEY)
         from_date = (date.today() - timedelta(days=2)).isoformat()
 
-        # Build queries
-        if holding_names:
-            holdings_query = " OR ".join(holding_names[:3])
+        # Build queries — use names when available, else strip exchange suffixes from tickers.
+        # Skip bond/FD tickers that start with digits (e.g. 1190VCCL26) — no news coverage.
+        clean_names = [n for n in holding_names if n]
+        if clean_names:
+            holdings_query = " OR ".join(clean_names[:3])
         else:
-            holdings_query = " OR ".join(tickers[:3]) if tickers else "stocks"
+            clean_tickers = [
+                t.split(".")[0] for t in tickers
+                if t and not t[0].isdigit()
+            ]
+            holdings_query = " OR ".join(clean_tickers[:3]) if clean_tickers else "stocks"
 
         tab_queries = {
             "holdings": holdings_query,
@@ -643,6 +674,22 @@ class DataFetcher:
                     except Exception as exc:
                         logger.warning("fetch_analyst: price_target failed for %s: %s", ticker, exc)
 
+                    # yfinance fallback — Finnhub free tier has no NSE coverage
+                    if rating is None and target_mean is None:
+                        try:
+                            info = yf.Ticker(ticker).info
+                            rec_key = info.get("recommendationKey", "")
+                            if rec_key in ("strong_buy", "buy"):
+                                rating = "BUY"
+                            elif rec_key in ("sell", "strong_sell", "underperform"):
+                                rating = "SELL"
+                            elif rec_key in ("hold", "neutral"):
+                                rating = "HOLD"
+                            target_mean = info.get("targetMeanPrice")
+                            num_analysts = info.get("numberOfAnalystOpinions")
+                        except Exception as exc:
+                            logger.warning("fetch_analyst: yfinance fallback failed for %s: %s", ticker, exc)
+
                     # Cache to analyst_cache
                     conn.execute(
                         "INSERT OR REPLACE INTO analyst_cache (symbol, date, rating, target_mean, num_analysts) VALUES (?, ?, ?, ?, ?)",
@@ -665,6 +712,178 @@ class DataFetcher:
 
         logger.info("fetch_analyst: fetched analyst data for %d/%d tickers", len(results), len(tickers))
         return results
+
+    def fetch_benchmark(self, holdings: list) -> dict:
+        """
+        Compute portfolio and index returns for windows: 1M, 3M, YTD, 1Y.
+
+        Parameters
+        ----------
+        holdings : list
+            List of holding dicts. Each must have keys:
+              ticker_yfinance (str), quantity (float), current_price (float|None),
+              currency (str), asset_type (str), region (str).
+
+        Returns
+        -------
+        dict
+            Keys: windows, portfolio, indices, regional.
+            Each window value is float (% return) or None when insufficient history.
+
+        Security note: no SQL is executed; all yfinance calls are read-only.
+        Fail-open: individual ticker/index failures return None for that cell.
+        """
+        WINDOWS = ["1M", "3M", "YTD", "1Y"]
+        INDEX_TICKERS = ["^NSEI", "^GSPC", "^GDAXI"]
+
+        # Empty shape — returned on failure or empty input
+        empty_windows: dict = {w: None for w in WINDOWS}
+        empty_shape: dict = {
+            "windows": WINDOWS,
+            "portfolio": dict(empty_windows),
+            "indices": {
+                "^NSEI":  dict(empty_windows),
+                "^GSPC":  dict(empty_windows),
+                "^GDAXI": dict(empty_windows),
+            },
+            "regional": {
+                "india":          dict(empty_windows),
+                "germany_us_etf": dict(empty_windows),
+            },
+        }
+
+        # Filter to investable holdings (non-cash, non-zero quantity)
+        investable = [
+            h for h in holdings
+            if h.get("ticker_yfinance")
+            and h.get("asset_type") != "cash"
+            and (h.get("quantity") or 0) > 0
+        ]
+        holding_tickers = [h["ticker_yfinance"] for h in investable]
+
+        combined = list(dict.fromkeys(holding_tickers + INDEX_TICKERS))  # unique, preserving order
+        if not combined:
+            logger.warning("fetch_benchmark: no tickers to fetch")
+            return empty_shape
+
+        # One batch download covering 1Y of history (sufficient for all windows)
+        try:
+            raw = yf.download(
+                tickers=" ".join(combined),
+                period="1y",
+                auto_adjust=True,
+                threads=True,
+                progress=False,
+            )
+        except Exception as exc:
+            logger.warning("fetch_benchmark: yfinance.download raised: %s", exc)
+            return empty_shape
+
+        if raw is None or raw.empty:
+            logger.warning("fetch_benchmark: yfinance returned empty DataFrame")
+            return empty_shape
+
+        # Helper: extract Close series for a single ticker from multi or single layout
+        def _close_series(ticker: str):
+            if ("Close", ticker) in raw.columns:
+                series = raw.xs(ticker, axis=1, level=1)["Close"]
+            elif len(combined) == 1 and "Close" in raw.columns:
+                series = raw["Close"]
+            else:
+                return None
+            series = series.dropna()
+            return series if not series.empty else None
+
+        # Helper: compute window return % for a Close series
+        def _window_pct(series, window: str):
+            start = _window_start(window)
+            sliced = series[series.index.date >= start]
+            if sliced.empty:
+                return None
+            start_close = float(sliced.iloc[0])
+            end_close = float(sliced.iloc[-1])
+            if start_close == 0:
+                return None
+            return (end_close - start_close) / start_close * 100
+
+        # Per-ticker window returns
+        ticker_window_pcts: dict[str, dict] = {}
+        for ticker in combined:
+            try:
+                series = _close_series(ticker)
+                if series is None:
+                    logger.warning("fetch_benchmark: no Close data for %s", ticker)
+                    ticker_window_pcts[ticker] = {w: None for w in WINDOWS}
+                    continue
+                ticker_window_pcts[ticker] = {
+                    w: _window_pct(series, w) for w in WINDOWS
+                }
+            except Exception as exc:
+                logger.warning("fetch_benchmark: failed for %s: %s", ticker, exc)
+                ticker_window_pcts[ticker] = {w: None for w in WINDOWS}
+                continue
+
+        # Weighted aggregate for a list of holdings + per-window pcts
+        def _weighted_avg(bucket_holdings: list, window: str):
+            total_weight = 0.0
+            weighted_sum = 0.0
+            for h in bucket_holdings:
+                t = h.get("ticker_yfinance")
+                if not t:
+                    continue
+                pct = ticker_window_pcts.get(t, {}).get(window)
+                if pct is None:
+                    continue
+                price = h.get("current_price") or 0.0
+                qty = h.get("quantity") or 0.0
+                weight = price * qty
+                if weight <= 0:
+                    continue
+                weighted_sum += pct * weight
+                total_weight += weight
+            if total_weight == 0:
+                return None
+            return weighted_sum / total_weight
+
+        # Build result
+        result: dict = {
+            "windows": WINDOWS,
+            "portfolio": {},
+            "indices": {
+                "^NSEI":  {},
+                "^GSPC":  {},
+                "^GDAXI": {},
+            },
+            "regional": {
+                "india":          {},
+                "germany_us_etf": {},
+            },
+        }
+
+        # Portfolio-level aggregate
+        for w in WINDOWS:
+            result["portfolio"][w] = _weighted_avg(investable, w)
+
+        # Index returns
+        for idx_ticker in INDEX_TICKERS:
+            for w in WINDOWS:
+                result["indices"][idx_ticker][w] = ticker_window_pcts.get(idx_ticker, {}).get(w)
+
+        # Regional buckets
+        india_holdings = [h for h in investable if h.get("region") == "india"]
+        intl_holdings = [
+            h for h in investable
+            if h.get("region") in {"germany", "us", "etf"} or h.get("asset_type") == "etf"
+        ]
+        for w in WINDOWS:
+            result["regional"]["india"][w] = _weighted_avg(india_holdings, w)
+            result["regional"]["germany_us_etf"][w] = _weighted_avg(intl_holdings, w)
+
+        logger.info(
+            "fetch_benchmark: computed returns for %d holdings + %d indices",
+            len(investable), len(INDEX_TICKERS),
+        )
+        return result
 
     # ------------------------------------------------------------------
     # Private helpers

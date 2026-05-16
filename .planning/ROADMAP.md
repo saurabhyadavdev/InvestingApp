@@ -27,6 +27,7 @@
 **Requirements:** PORT-01, PORT-02, PORT-03, PORT-04, PORT-05, PORT-06, PORT-07, MKT-01, MKT-02, MKT-03, BRIEF-01, BRIEF-02, BRIEF-03, FX-01, FX-02, FX-03
 
 **Success Criteria** (what must be TRUE):
+
 1. User can import a Zerodha CSV and see all Indian positions with prices and P&L
 2. User can import a Trade Republic CSV and see all German/US/ETF positions with prices and P&L
 3. User can view unified portfolio showing both accounts on one screen with consolidated value and allocation
@@ -42,6 +43,7 @@
 **Plans:** 6/6 plans complete
 
 Plans:
+
 - [x] 01-01-PLAN.md — Walking Skeleton: FastAPI + React + SQLite schema + health endpoint + portfolio stub
 - [x] 01-02-PLAN.md — CSV import + portfolio table + allocation card (PORT-01 through PORT-07)
 - [x] 01-03-PLAN.md — Market indices + FX rate + alert threshold (MKT-01–03, FX-01–03)
@@ -64,6 +66,7 @@ Plans:
 **Requirements:** MKT-04, MKT-05, MKT-06, MKT-07, SIG-01, SIG-02, SIG-03, SIG-04, BRIEF-04, BRIEF-05, FX-04
 
 **Success Criteria** (what must be TRUE):
+
 1. User can see news filtered to companies in their portfolio (holdings-specific news)
 2. User can see India macro news (RBI, budget, inflation, sector moves) and Germany/EU macro news (ECB, German economy) in the briefing
 3. User can see US macro news (Fed, earnings season, global events affecting US stocks/ETFs)
@@ -75,12 +78,20 @@ Plans:
 9. Chat responses reference only the current briefing data with no hallucinated facts or invented data
 10. User can see cash deployment suggestions based on idle cash balance and market conditions
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
-- [ ] 02-01-PLAN.md — Foundation: replace pandas-ta with ta library, add news_cache + analyst_cache tables, extend Pydantic models with Phase 2 fields and chat models
+**Wave 1**
+
+- [x] 02-01-PLAN.md — Foundation: replace pandas-ta with ta library, add news_cache + analyst_cache tables, extend Pydantic models with Phase 2 fields and chat models
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-02-PLAN.md — Backend pipeline: fetch_signals() + fetch_news() on DataFetcher; briefing steps 4+5 (SIG-01, MKT-04–07)
 - [ ] 02-03-PLAN.md — Frontend intelligence UI: PortfolioTable Rec badge + expandable row; NewsCard 4-tab; Dashboard Market Intelligence section (SIG-01, MKT-04–07)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 02-04-PLAN.md — Analyst + AI synthesis + Chat: fetch_analyst(), ai_synthesis.py, briefing steps 6+7, POST /api/chat, ChatPanel (SIG-02, SIG-03, SIG-04, BRIEF-04, BRIEF-05, FX-04)
 
 **UI hint:** yes
@@ -92,7 +103,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
-| 2. Intelligence & Chat | 0/4 | Not started | — |
+| 2. Intelligence & Chat | 1/4 | In Progress|  |
 
 ---
 

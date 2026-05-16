@@ -21,6 +21,17 @@ class HoldingResponse(BaseModel):
     asset_type: Optional[str] = None
     broker: str
     price_date: Optional[str] = None
+    rec: Optional[str] = None
+    rsi_14: Optional[float] = None
+    macd: Optional[float] = None
+    macd_signal: Optional[float] = None
+    macd_histogram: Optional[float] = None
+    sma_50: Optional[float] = None
+    sma_200: Optional[float] = None
+    analyst_rating: Optional[str] = None
+    analyst_target: Optional[float] = None
+    analyst_num: Optional[int] = None
+    ai_narrative: Optional[str] = None
 
 
 class PortfolioResponse(BaseModel):
@@ -97,8 +108,22 @@ class BriefingResponse(BaseModel):
     generated_at: str
     briefing_date: str
     fetched_at: str
+    news: Optional[dict] = None
 
 
 class RefreshResponse(BaseModel):
     status: str
     generated_at: str
+
+
+# ---------------------------------------------------------------------------
+# Plan 02-01: Chat models (Phase 2)
+# ---------------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    message: str
+    briefing: dict
+
+
+class ChatResponse(BaseModel):
+    response: str

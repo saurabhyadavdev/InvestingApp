@@ -16,7 +16,7 @@ export default function App() {
 
   const loadBriefing = useCallback(() => {
     setLoading(true);
-    fetchBriefing()
+    return fetchBriefing()
       .then((data) => {
         setBriefing(data);
         setLoading(false);

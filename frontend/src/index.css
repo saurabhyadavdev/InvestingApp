@@ -309,3 +309,30 @@ tfoot tr.summary-row td {
   color: var(--color-text-secondary);
   font-size: 14px;
 }
+
+/* ---- Phase 2: Expandable signal row ---- */
+.expanded-row td {
+  background: var(--color-bg-card);
+  padding: 12px 16px;
+}
+
+.signals-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.ai-narrative {
+  margin: 8px 0 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+}

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 /**
  * PortfolioTable
  * Dense table showing all holdings with P&L per UI-SPEC.
  * P&L cells colored: positive=green, negative=red, zero=neutral gray.
+ * Phase 2: Rec badge column + expandable signal row (RSI, MACD, SMA, analyst, AI narrative).
  */
 
 function getCurrencySymbol(currency) {
@@ -25,7 +26,15 @@ function formatNum(value, decimals = 2) {
   return Number(value).toFixed(decimals);
 }
 
+const REC_STYLES = {
+  BUY:  { background: '#28A745', color: '#fff' },
+  SELL: { background: '#DC3545', color: '#fff' },
+  HOLD: { background: '#6C757D', color: '#fff' },
+};
+
 export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd = 0, fxRate = 90 }) {
+  const [expandedId, setExpandedId] = useState(null);
+
   if (!holdings || holdings.length === 0) {
     return (
       <div className="empty-state" id="import-anchor">
@@ -70,6 +79,8 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
             <th>Currency</th>
             <th>Region</th>
             <th>Broker</th>
+            <th>Rec</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -78,26 +89,63 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
             const plInr = h.currency === 'EUR'
               ? (h.pl || 0) * fxRate
               : (h.pl || 0);
+            const rowKey = h.id || `${h.broker}-${h.ticker}-${idx}`;
             return (
-              <tr key={h.id || `${h.broker}-${h.ticker}-${idx}`}>
-                <td>{h.ticker}</td>
-                <td>{formatNum(h.quantity, 4)}</td>
-                <td>{sym}{formatNum(h.avg_buy)}</td>
-                <td>
-                  {h.current_price !== null && h.current_price !== undefined
-                    ? `${sym}${formatNum(h.current_price)}`
-                    : '—'}
-                </td>
-                <td className={getPLClass(plInr)}>
-                  ₹{formatNum(plInr)}
-                </td>
-                <td className={getPLClass(h.pl_pct)}>
-                  {formatNum(h.pl_pct)}%
-                </td>
-                <td>{h.currency}</td>
-                <td>{h.region || '—'}</td>
-                <td>{h.broker}</td>
-              </tr>
+              <React.Fragment key={rowKey}>
+                <tr
+                  onClick={() => setExpandedId(expandedId === h.id ? null : h.id)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <td>{h.ticker}</td>
+                  <td>{formatNum(h.quantity, 4)}</td>
+                  <td>{sym}{formatNum(h.avg_buy)}</td>
+                  <td>
+                    {h.current_price !== null && h.current_price !== undefined
+                      ? `${sym}${formatNum(h.current_price)}`
+                      : '—'}
+                  </td>
+                  <td className={getPLClass(plInr)}>
+                    ₹{formatNum(plInr)}
+                  </td>
+                  <td className={getPLClass(h.pl_pct)}>
+                    {formatNum(h.pl_pct)}%
+                  </td>
+                  <td>{h.currency}</td>
+                  <td>{h.region || '—'}</td>
+                  <td>{h.broker}</td>
+                  <td>
+                    {h.rec && (
+                      <span style={{ ...REC_STYLES[h.rec], padding: '4px 8px', borderRadius: '3px', fontSize: '11px', fontWeight: 700 }}>
+                        {h.rec}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ opacity: expandedId === h.id ? 1.0 : 0.4, userSelect: 'none' }}>›</td>
+                </tr>
+                {expandedId === h.id && (
+                  <tr className="expanded-row">
+                    <td colSpan={11}>
+                      <div className="signals-panel">
+                        <div className="signals-row">
+                          <span>RSI: {h.rsi_14 ?? '—'}</span>
+                          <span>MACD: {h.macd ?? '—'}</span>
+                          <span>SMA50: {h.sma_50 ?? '—'}</span>
+                          <span>SMA200: {h.sma_200 ?? '—'}</span>
+                        </div>
+                        <div className="signals-row">
+                          <span>Analyst: {h.analyst_rating ?? 'No analyst coverage'}</span>
+                          {h.analyst_target && <span>Target: {h.currency === 'EUR' ? '€' : '₹'}{h.analyst_target}</span>}
+                          {h.analyst_num && <span>({h.analyst_num} analysts)</span>}
+                        </div>
+                        {h.ai_narrative
+                          ? <p className="ai-narrative">{h.ai_narrative}</p>
+                          : <p className="ai-narrative" style={{ color: 'var(--color-text-secondary)' }}>AI synthesis unavailable</p>
+                        }
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             );
           })}
         </tbody>
@@ -108,7 +156,7 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
               <strong>₹{formatNum(totalPlInr)}</strong>
             </td>
             <td></td>
-            <td colSpan={3}>
+            <td colSpan={5}>
               <span style={{ color: 'var(--color-neutral)', fontSize: '12px' }}>
                 (EUR equiv: €{formatNum(totalPlEur)})
                 {' '}

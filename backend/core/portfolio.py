@@ -1,15 +1,18 @@
 """
-Portfolio CSV import and P&L calculation for InvestIQ.
+Portfolio CSV/PDF import and P&L calculation for InvestIQ.
 
 Supports:
-  - Zerodha (NSE/BSE Indian stocks)
-  - Trade Republic (German/US stocks and ETFs in EUR)
+  - Zerodha (NSE/BSE Indian stocks, CSV)
+  - Trade Republic (German/US stocks and ETFs in EUR, CSV)
+  - Traders Place (German broker, quarterly PDF statement)
 
 All SQLite inserts use parameterized ? placeholders — no f-string SQL.
 """
 import csv
+import io
 import json
 import logging
+import re
 import sqlite3
 import tempfile
 import os
@@ -432,7 +435,8 @@ def resolve_tr_yfinance_tickers(db_path: str) -> int:
     try:
         rows = conn.execute(
             "SELECT id, isin, region FROM holdings "
-            "WHERE broker='trade_republic' AND ticker_yfinance IS NULL AND isin IS NOT NULL"
+            "WHERE broker IN ('trade_republic', 'traders_place') "
+            "AND ticker_yfinance IS NULL AND isin IS NOT NULL"
         ).fetchall()
     finally:
         conn.close()
@@ -522,6 +526,133 @@ def resolve_tr_yfinance_tickers(db_path: str) -> int:
 
     logger.info("Resolved %d TR ISIN → yfinance tickers via OpenFIGI", len(resolved))
     return len(resolved)
+
+
+# ---------------------------------------------------------------------------
+# Public function 2c: import_traders_place_pdf
+# ---------------------------------------------------------------------------
+
+def _parse_de_number(s: str) -> float:
+    """Parse a German-format number string → float.
+    German format: period = thousands separator, comma = decimal.
+    E.g. '6.710,31' → 6710.31, '15,71500' → 15.715
+    """
+    if not s:
+        return 0.0
+    cleaned = s.strip().replace(".", "").replace(",", ".")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
+
+
+def _parse_de_date(s: str) -> Optional[str]:
+    """Parse DD.MM.YYYY → YYYY-MM-DD. Returns None on failure."""
+    if not s:
+        return None
+    m = re.match(r"(\d{2})\.(\d{2})\.(\d{4})", s.strip())
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return None
+
+
+def import_traders_place_pdf(source: Union[str, bytes, IO], db_path: str) -> int:
+    """
+    Parse a Traders Place quarterly PDF statement and insert holdings into SQLite.
+
+    Extracts holdings from page 3 table:
+      ISIN | Name | Depotanteil % | Bewertung EUR | Bewertungskurs | Kursdatum
+
+    Since the PDF has no average buy price, cost_per_unit is set to the
+    quarter-end Bewertungskurs. P&L in the app will therefore show movement
+    since the last quarterly statement date.
+
+    source: file path (str), raw bytes, or file-like binary object.
+    Returns: count of rows inserted.
+    Raises: ValueError if no holdings table is found.
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        raise ValueError(
+            "pdfplumber is required for PDF import. Install it: pip install pdfplumber"
+        )
+
+    # Open PDF from path, bytes, or file-like object
+    if isinstance(source, str):
+        pdf_ctx = pdfplumber.open(source)
+    elif isinstance(source, (bytes, bytearray)):
+        pdf_ctx = pdfplumber.open(io.BytesIO(source))
+    else:
+        pdf_ctx = pdfplumber.open(source)
+
+    rows_found = []
+    _ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{10}$")
+
+    with pdf_ctx as pdf:
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            for table in tables:
+                for row in table:
+                    if not row or len(row) < 5:
+                        continue
+                    isin_cell = (row[0] or "").strip()
+                    if not _ISIN_RE.match(isin_cell):
+                        continue  # skip header / footer / cash rows
+                    rows_found.append(row)
+
+    if not rows_found:
+        raise ValueError(
+            "No holdings found in PDF. Expected ISIN rows in the Wertpapierpositionen table."
+        )
+
+    count = 0
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM holdings WHERE broker = 'traders_place'")
+
+        for row in rows_found:
+            isin = row[0].strip()
+            name = (row[1] or "").strip()
+            market_value = _parse_de_number(row[3] or "0")   # Bewertung in EUR
+            price = _parse_de_number(row[4] or "0")          # Bewertungskurs
+
+            if price <= 0:
+                continue
+
+            units = round(market_value / price, 6)
+
+            region = _classify_tr_region(isin)
+
+            name_upper = name.upper()
+            if any(k in name_upper for k in ("ETF", "ETC", "UCITS", "FUND", "INDEX")):
+                asset_type = "etf"
+            elif region == "etf":
+                asset_type = "etf"
+            else:
+                asset_type = "equity"
+
+            cursor.execute("""
+                INSERT OR REPLACE INTO holdings
+                    (broker, ticker_local, isin, ticker_yfinance, name, units,
+                     cost_per_unit, currency, region, asset_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "traders_place",
+                isin,
+                isin,
+                None,          # resolved later via OpenFIGI
+                name or None,
+                units,
+                price,         # quarter-end price as cost basis
+                "EUR",
+                region,
+                asset_type,
+            ))
+            count += 1
+
+        conn.commit()
+    return count
 
 
 # ---------------------------------------------------------------------------

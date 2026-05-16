@@ -57,6 +57,7 @@ export default function PortfolioTable({
   const isZerodha = broker === 'zerodha';
   const plCurrency = isZerodha ? 'INR' : 'EUR';
   const plSymbol = isZerodha ? '₹' : '€';
+  const isTradersPlace = broker === 'traders_place';
 
   if (!holdings || holdings.length === 0) {
     return (
@@ -82,7 +83,7 @@ export default function PortfolioTable({
             <th>Ticker</th>
             {!isZerodha && <th>Name</th>}
             <th>Qty</th>
-            <th>Avg Buy</th>
+            <th>{isTradersPlace ? 'Stmt Price' : 'Avg Buy'}</th>
             <th>Current</th>
             <th>P&amp;L ({plCurrency})</th>
             <th>P&amp;L %</th>

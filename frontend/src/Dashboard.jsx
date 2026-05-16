@@ -239,6 +239,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
 
   const zerodhaHoldings = holdings.filter(h => h.broker === 'zerodha');
   const trHoldings = holdings.filter(h => h.broker === 'trade_republic');
+  const tpHoldings = holdings.filter(h => h.broker === 'traders_place');
 
   // Convert indices dict to array for IndicesCard (which expects array)
   const indicesArray = Object.values(indices || {});
@@ -361,6 +362,38 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           />
         )}
       </div>
+
+      {/* Traders Place Portfolio */}
+      {(tpHoldings.length > 0 || holdings.length === 0) && (
+        <div className="portfolio-section">
+          <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
+            🏦 Traders Place Portfolio
+          </div>
+          {tpHoldings.length === 0 ? (
+            <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
+              No Traders Place holdings. Import a quarterly PDF above.
+              <span style={{ marginLeft: 8, fontSize: '11px', color: '#6C757D' }}>
+                (P&amp;L shown vs. last quarterly statement price)
+              </span>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: '11px', color: '#6C757D', marginBottom: 8 }}>
+                P&amp;L shown vs. quarter-end price from last imported statement
+              </div>
+              <PortfolioTable
+                holdings={tpHoldings}
+                totalInr={totalInr}
+                totalEur={totalEur}
+                totalUsd={totalUsd}
+                fxRate={fx.rate ?? 90}
+                alertTickers={alertTickers}
+                broker="traders_place"
+              />
+            </>
+          )}
+        </div>
+      )}
 
       {/* Allocation */}
       <div className="portfolio-section">

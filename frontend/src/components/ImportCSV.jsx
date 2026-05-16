@@ -3,15 +3,17 @@ import { importCSV } from '../api.js';
 
 /**
  * ImportCSV
- * Two broker-specific file upload buttons. On file select, uploads to POST /api/import.
- * Shows uploading/success/error states per UI-SPEC copywriting contract.
+ * Broker-specific file upload buttons for Zerodha (CSV), Trade Republic (CSV),
+ * and Traders Place (PDF quarterly statement).
  */
 export default function ImportCSV({ onImportSuccess }) {
   const zerodhaRef = useRef(null);
   const trRef = useRef(null);
+  const tpRef = useRef(null);
 
-  const [zerodhaStatus, setZerodhaStatus] = useState(null); // null | 'uploading' | {count} | {error}
+  const [zerodhaStatus, setZerodhaStatus] = useState(null);
   const [trStatus, setTrStatus] = useState(null);
+  const [tpStatus, setTpStatus] = useState(null);
 
   async function handleFileSelect(broker, file, setStatus) {
     if (!file) return;
@@ -25,10 +27,10 @@ export default function ImportCSV({ onImportSuccess }) {
     }
   }
 
-  function renderStatus(status, broker) {
+  function renderStatus(status, isPdf) {
     if (!status) return null;
     if (status.uploading) {
-      return <span className="import-status import-status--uploading">Uploading...</span>;
+      return <span className="import-status import-status--uploading">{isPdf ? 'Parsing PDF…' : 'Uploading…'}</span>;
     }
     if (status.count !== undefined) {
       return (
@@ -40,7 +42,7 @@ export default function ImportCSV({ onImportSuccess }) {
     if (status.error) {
       return (
         <span className="import-status import-status--error">
-          CSV upload failed — {status.error}. Please check file format and try again.
+          Upload failed — {status.error}. Check format and retry.
         </span>
       );
     }
@@ -68,7 +70,7 @@ export default function ImportCSV({ onImportSuccess }) {
             handleFileSelect('zerodha', file, setZerodhaStatus);
           }}
         />
-        {renderStatus(zerodhaStatus, 'zerodha')}
+        {renderStatus(zerodhaStatus, false)}
       </div>
 
       <div className="import-csv-row">
@@ -90,7 +92,29 @@ export default function ImportCSV({ onImportSuccess }) {
             handleFileSelect('trade_republic', file, setTrStatus);
           }}
         />
-        {renderStatus(trStatus, 'trade_republic')}
+        {renderStatus(trStatus, false)}
+      </div>
+
+      <div className="import-csv-row">
+        <button
+          className="btn-import"
+          onClick={() => tpRef.current && tpRef.current.click()}
+          disabled={tpStatus?.uploading}
+        >
+          Import Traders Place PDF
+        </button>
+        <input
+          ref={tpRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            handleFileSelect('traders_place', file, setTpStatus);
+          }}
+        />
+        {renderStatus(tpStatus, true)}
       </div>
     </div>
   );

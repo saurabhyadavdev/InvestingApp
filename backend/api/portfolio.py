@@ -1,14 +1,12 @@
 """
 Portfolio endpoints:
-  - POST /api/import  — accept Zerodha or Trade Republic CSV, import to SQLite
+  - POST /api/import  — accept Zerodha/Trade Republic CSV or Traders Place PDF
   - GET  /api/portfolio — return holdings with P&L and cash_by_broker
 
 All SQL uses parameterized queries (? placeholders) — no f-string interpolation.
 """
 import io
-import os
 import sqlite3 as _sqlite3
-import tempfile
 from datetime import datetime, timezone
 from typing import List
 
@@ -19,6 +17,7 @@ from backend.models import HoldingResponse, ImportResponse, PortfolioResponse
 from backend.core.portfolio import (
     import_zerodha_csv,
     import_trade_republic_csv,
+    import_traders_place_pdf,
     resolve_tr_yfinance_tickers,
     get_portfolio_with_pl,
 )
@@ -26,16 +25,17 @@ from backend.core.data_fetcher import DataFetcher
 
 router = APIRouter(prefix="/api")
 
-VALID_BROKERS = ("zerodha", "trade_republic")
+VALID_BROKERS = ("zerodha", "trade_republic", "traders_place")
 
 
-def _fetch_tr_prices(db_path: str) -> None:
-    """Fetch latest prices for all resolved TR holdings (best-effort, called after import)."""
+def _fetch_resolved_prices(db_path: str, broker: str) -> None:
+    """Fetch latest prices for all resolved holdings of a broker (best-effort)."""
     conn = _sqlite3.connect(db_path)
     try:
         rows = conn.execute(
             "SELECT ticker_yfinance FROM holdings "
-            "WHERE broker='trade_republic' AND ticker_yfinance IS NOT NULL"
+            "WHERE broker=? AND ticker_yfinance IS NOT NULL",
+            (broker,),
         ).fetchall()
     finally:
         conn.close()
@@ -51,16 +51,13 @@ async def import_portfolio(
     file: UploadFile = File(...),
 ):
     """
-    Accept a CSV file upload for a specific broker and import holdings to SQLite.
+    Accept a file upload for a specific broker and import holdings to SQLite.
 
     Form fields:
-        broker: "zerodha" or "trade_republic"
-        file: CSV file content
+        broker: "zerodha", "trade_republic", or "traders_place"
+        file: CSV (Zerodha/TR) or PDF (Traders Place quarterly statement)
 
     Returns ImportResponse with imported_count.
-    Raises:
-        400 if broker is not in the valid list.
-        422 if CSV is missing required columns.
     """
     if broker not in VALID_BROKERS:
         raise HTTPException(
@@ -68,29 +65,36 @@ async def import_portfolio(
             detail=f"Invalid broker '{broker}'. Must be one of: {', '.join(VALID_BROKERS)}",
         )
 
-    # Save uploaded file to a temp location, then parse it
     content = await file.read()
-
-    # Write to temp file so csv.DictReader can open by path, OR pass as StringIO
-    # We use io.StringIO to avoid temp file cleanup complexity
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("latin-1")
-
-    csv_io = io.StringIO(text)
 
     try:
         if broker == "zerodha":
-            count = import_zerodha_csv(csv_io, settings.DB_PATH)
-        else:
-            count = import_trade_republic_csv(csv_io, settings.DB_PATH)
-            # Resolve ISINs → yfinance tickers, then immediately fetch prices
+            try:
+                text = content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = content.decode("latin-1")
+            count = import_zerodha_csv(io.StringIO(text), settings.DB_PATH)
+
+        elif broker == "trade_republic":
+            try:
+                text = content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = content.decode("latin-1")
+            count = import_trade_republic_csv(io.StringIO(text), settings.DB_PATH)
             try:
                 resolve_tr_yfinance_tickers(settings.DB_PATH)
-                _fetch_tr_prices(settings.DB_PATH)
+                _fetch_resolved_prices(settings.DB_PATH, "trade_republic")
             except Exception:
-                pass  # non-fatal
+                pass
+
+        else:  # traders_place — PDF
+            count = import_traders_place_pdf(content, settings.DB_PATH)
+            try:
+                resolve_tr_yfinance_tickers(settings.DB_PATH)
+                _fetch_resolved_prices(settings.DB_PATH, "traders_place")
+            except Exception:
+                pass
+
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

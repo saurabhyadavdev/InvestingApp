@@ -45,9 +45,11 @@ class BriefingOrchestrator:
           1. Fetch EUR/INR FX rate (used for portfolio P&L conversion)
           2. Fetch market indices
           3. Compute portfolio P&L
-          4. Assemble briefing dict
-          5. INSERT into briefing_snapshots
-          6. Return briefing dict
+          4. Fetch technical signals (RSI/MACD/SMA) and merge into holdings
+          5. Fetch news (holdings + India/Germany/US macro tabs)
+          6. Assemble briefing dict
+          7. INSERT into briefing_snapshots
+          8. Return briefing dict
 
         Exceptions in individual sections are caught and logged — partial data
         is better than no briefing (fail-open per T-04-04 guidance).
@@ -101,7 +103,33 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: portfolio fetch failed: %s", exc)
             portfolio_data = {}
 
-        # Step 4: Assemble briefing
+        # Step 4: Technical signals — fetch RSI/MACD/SMA for each holding
+        try:
+            holding_tickers = [h["ticker"] for h in portfolio_data.get("holdings", [])]
+            signals_data = self.fetcher.fetch_signals(holding_tickers)
+        except Exception as exc:
+            logger.error("BriefingOrchestrator: signals fetch failed: %s", exc)
+            signals_data = {}
+
+        # Merge signals into each holding dict
+        for holding in portfolio_data.get("holdings", []):
+            sig = signals_data.get(holding["ticker"], {})
+            holding["rsi_14"] = sig.get("rsi_14", None)
+            holding["macd"] = sig.get("macd", None)
+            holding["macd_signal"] = sig.get("macd_signal", None)
+            holding["macd_histogram"] = sig.get("macd_histogram", None)
+            holding["sma_50"] = sig.get("sma_50", None)
+            holding["sma_200"] = sig.get("sma_200", None)
+
+        # Step 5: News — fetch holdings + macro tabs from NewsAPI
+        try:
+            holding_names = [h.get("name", h["ticker"]) for h in portfolio_data.get("holdings", [])]
+            news_data = self.fetcher.fetch_news(holding_tickers, holding_names)
+        except Exception as exc:
+            logger.error("BriefingOrchestrator: news fetch failed: %s", exc)
+            news_data = {"holdings": [], "india": [], "germany": [], "us": []}
+
+        # Step 6: Assemble briefing
         now_utc = datetime.now(timezone.utc)
         now_ist = now_utc.astimezone(_IST)
         briefing_date = now_ist.strftime("%Y-%m-%d")
@@ -111,11 +139,12 @@ class BriefingOrchestrator:
             "portfolio": portfolio_data,
             "indices": indices_data,
             "fx": fx_data,
+            "news": news_data,
             "generated_at": generated_at,
             "briefing_date": briefing_date,
         }
 
-        # Step 5: INSERT into briefing_snapshots, then prune old rows (keep last 30)
+        # Step 7: INSERT into briefing_snapshots, then prune old rows (keep last 30)
         try:
             briefing_json = json.dumps(briefing)
             conn = sqlite3.connect(self.db_path)

@@ -30,22 +30,22 @@
 - [x] **FX-01**: User can see current EUR/INR exchange rate with timestamp
 - [x] **FX-02**: User can set an EUR/INR alert threshold and be notified when rate crosses it
 - [x] **FX-03**: User can see today's EUR/INR range (low–high) to assess transfer timing
-- [ ] **FX-04**: User can see suggestions for deploying idle cash (where to put uninvested funds)
+- [x] **FX-04**: User can see suggestions for deploying idle cash (where to put uninvested funds)
 
 ### Signals & Recommendations
 
 - [x] **SIG-01**: User can see RSI, MACD, and moving average values per holding
-- [ ] **SIG-02**: User can see analyst consensus rating (Buy/Hold/Sell) and average price target per holding
-- [ ] **SIG-03**: User can see a Buy/Sell/Hold recommendation per holding combining technical + analyst signals
-- [ ] **SIG-04**: User can see a plain-English AI synthesis explaining the recommendation for each holding
+- [x] **SIG-02**: User can see analyst consensus rating (Buy/Hold/Sell) and average price target per holding
+- [x] **SIG-03**: User can see a Buy/Sell/Hold recommendation per holding combining technical + analyst signals
+- [x] **SIG-04**: User can see a plain-English AI synthesis explaining the recommendation for each holding
 
 ### Briefing & Interface
 
 - [x] **BRIEF-01**: Morning briefing auto-generates at 07:00 IST without user action
 - [x] **BRIEF-02**: User can trigger an on-demand mid-day refresh anytime
 - [x] **BRIEF-03**: User can view the complete briefing in a local web dashboard (opens in browser)
-- [ ] **BRIEF-04**: User can ask follow-up questions about any holding, signal, or recommendation via chat
-- [ ] **BRIEF-05**: Chat responses reference only the current briefing data (no hallucinated facts)
+- [x] **BRIEF-04**: User can ask follow-up questions about any holding, signal, or recommendation via chat
+- [x] **BRIEF-05**: Chat responses reference only the current briefing data (no hallucinated facts)
 
 ## v2 Requirements
 
@@ -101,12 +101,12 @@
 | MKT-06 | Phase 2 | Complete |
 | MKT-07 | Phase 2 | Complete |
 | SIG-01 | Phase 2 | Complete |
-| SIG-02 | Phase 2 | Pending |
-| SIG-03 | Phase 2 | Pending |
-| SIG-04 | Phase 2 | Pending |
-| BRIEF-04 | Phase 2 | Pending |
-| BRIEF-05 | Phase 2 | Pending |
-| FX-04 | Phase 2 | Pending |
+| SIG-02 | Phase 2 | Complete |
+| SIG-03 | Phase 2 | Complete |
+| SIG-04 | Phase 2 | Complete |
+| BRIEF-04 | Phase 2 | Complete |
+| BRIEF-05 | Phase 2 | Complete |
+| FX-04 | Phase 2 | Complete |
 
 **Coverage:**
 - v1 requirements: 26 total

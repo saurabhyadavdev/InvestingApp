@@ -10,7 +10,7 @@
 ## Phases
 
 - [x] **Phase 1: Core Daily Briefing** — Unified portfolio import and morning briefing with market indices
-- [ ] **Phase 2: Intelligence & Chat** — News, technical signals, AI synthesis, and chat interface
+- [x] **Phase 2: Intelligence & Chat** — News, technical signals, AI synthesis, and chat interface (completed 2026-05-16)
 
 ---
 
@@ -78,7 +78,7 @@ Plans:
 9. Chat responses reference only the current briefing data with no hallucinated facts or invented data
 10. User can see cash deployment suggestions based on idle cash balance and market conditions
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -92,7 +92,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-04-PLAN.md — Analyst + AI synthesis + Chat: fetch_analyst(), ai_synthesis.py, briefing steps 6+7, POST /api/chat, ChatPanel (SIG-02, SIG-03, SIG-04, BRIEF-04, BRIEF-05, FX-04)
+- [x] 02-04-PLAN.md — Analyst + AI synthesis + Chat: fetch_analyst(), ai_synthesis.py, briefing steps 6+7, POST /api/chat, ChatPanel (SIG-02, SIG-03, SIG-04, BRIEF-04, BRIEF-05, FX-04)
 
 **UI hint:** yes
 
@@ -103,7 +103,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
-| 2. Intelligence & Chat | 3/4 | In Progress|  |
+| 2. Intelligence & Chat | 4/4 | Complete   | 2026-05-16 |
 
 ---
 

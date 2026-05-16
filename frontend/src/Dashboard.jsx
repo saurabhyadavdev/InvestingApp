@@ -13,9 +13,11 @@
  *   6. EUR/INR Rate (FXCard)
  *   7. Footer: "Last updated: {time} IST, {date}"
  */
-import React, { useState, useCallback } from 'react';
-import { triggerRefresh, setFXAlert } from './api.js';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { triggerRefresh, setFXAlert, fetchAlertSettings } from './api.js';
 import ImportCSV from './components/ImportCSV.jsx';
+import AlertsBanner from './components/AlertsBanner.jsx';
+import SettingsModal from './components/SettingsModal.jsx';
 import PortfolioTable from './components/PortfolioTable.jsx';
 import AllocationCard from './components/AllocationCard.jsx';
 import HeatMapCard from './components/HeatMapCard.jsx';
@@ -101,6 +103,11 @@ function formatBriefingDate(dateStr) {
 export default function Dashboard({ briefing, loading, onRefresh }) {
   const [refreshing, setRefreshing] = useState(false);
 
+  // Alert settings modal state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [alertInitialSettings, setAlertInitialSettings] = useState(null);
+  const [notifiedBriefingId, setNotifiedBriefingId] = useState(null);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -129,6 +136,42 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
       setRefreshing(false);
     }
   }, [onRefresh]);
+
+  // Derive alerts from briefing (safe with null — returns empty array)
+  const alertsFired = briefing?.alerts_fired ?? [];
+  const alertTickers = useMemo(
+    () => new Set(alertsFired.map(a => a.ticker)),
+    [alertsFired]
+  );
+
+  // Browser notification — fires once per unique briefing when alerts exist and permission granted
+  // NOTE: Notification.requestPermission() is NOT called here — it stays in handleOpenSettings
+  useEffect(() => {
+    if (alertsFired.length === 0) return;
+    if (!briefing?.generated_at) return;
+    if (briefing.generated_at === notifiedBriefingId) return;
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') return;
+
+    new Notification('InvestIQ Alert', {
+      body: `${alertsFired.length} alert(s) triggered in your portfolio. Check the dashboard.`,
+    });
+    setNotifiedBriefingId(briefing.generated_at);
+  }, [briefing?.generated_at, alertsFired.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Gear icon click handler — requestPermission MUST stay here (user gesture context, not useEffect)
+  async function handleOpenSettings() {
+    if ('Notification' in window && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch (_) { /* ignore */ }
+    }
+    try {
+      const s = await fetchAlertSettings();
+      setAlertInitialSettings(s);
+    } catch (_) {
+      setAlertInitialSettings({});
+    }
+    setIsSettingsOpen(true);
+  }
 
   // --- Loading state ---
   if (loading) {
@@ -226,26 +269,46 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           )}
         </div>
 
-        {showRefresh && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {showRefresh && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{
+                backgroundColor: '#0066CC',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '8px 16px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: refreshing ? 'not-allowed' : 'pointer',
+                opacity: refreshing ? 0.7 : 1,
+              }}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh Now'}
+            </button>
+          )}
           <button
-            onClick={handleRefresh}
-            disabled={refreshing}
+            onClick={handleOpenSettings}
+            aria-label="Alert settings"
             style={{
-              backgroundColor: '#0066CC',
-              color: '#fff',
+              background: 'none',
               border: 'none',
-              borderRadius: '4px',
-              padding: '8px 16px',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: refreshing ? 'not-allowed' : 'pointer',
-              opacity: refreshing ? 0.7 : 1,
+              cursor: 'pointer',
+              padding: 4,
+              color: '#0066CC',
+              fontSize: 20,
+              lineHeight: 1,
             }}
           >
-            {refreshing ? 'Refreshing…' : 'Refresh Now'}
+            &#9881;
           </button>
-        )}
+        </div>
       </div>
+
+      {/* Alert Banner — sticky amber bar listing fired alerts */}
+      <AlertsBanner alertsFired={alertsFired} />
 
       {/* Import Holdings */}
       <div className="portfolio-section">
@@ -263,6 +326,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           totalEur={totalEur}
           totalUsd={totalUsd}
           fxRate={fx.rate ?? 90}
+          alertTickers={alertTickers}
         />
       </div>
 
@@ -343,6 +407,14 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
         Last updated: {formatIST(fetched_at || generated_at)}
       </footer>
       <ChatPanel briefing={briefing} />
+
+      {/* Settings Modal — mounts once, visibility controlled by isSettingsOpen */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        holdings={holdings}
+        initialSettings={alertInitialSettings}
+      />
     </div>
   );
 }

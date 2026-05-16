@@ -10,7 +10,7 @@
 ## Phases
 
 - [x] **Phase 1: Core Daily Briefing** — Unified portfolio import and morning briefing with market indices
-- [x] **Phase 2: Intelligence & Chat** — News, technical signals, AI synthesis, and chat interface
+- [ ] **Phase 2: Intelligence & Chat** — News, technical signals, AI synthesis, and chat interface
 
 ---
 
@@ -75,7 +75,13 @@ Plans:
 9. Chat responses reference only the current briefing data with no hallucinated facts or invented data
 10. User can see cash deployment suggestions based on idle cash balance and market conditions
 
-**Plans:** TBD
+**Plans:** 4 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Foundation: replace pandas-ta with ta library, add news_cache + analyst_cache tables, extend Pydantic models with Phase 2 fields and chat models
+- [ ] 02-02-PLAN.md — Backend pipeline: fetch_signals() + fetch_news() on DataFetcher; briefing steps 4+5 (SIG-01, MKT-04–07)
+- [ ] 02-03-PLAN.md — Frontend intelligence UI: PortfolioTable Rec badge + expandable row; NewsCard 4-tab; Dashboard Market Intelligence section (SIG-01, MKT-04–07)
+- [ ] 02-04-PLAN.md — Analyst + AI synthesis + Chat: fetch_analyst(), ai_synthesis.py, briefing steps 6+7, POST /api/chat, ChatPanel (SIG-02, SIG-03, SIG-04, BRIEF-04, BRIEF-05, FX-04)
 
 **UI hint:** yes
 
@@ -86,7 +92,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
-| 2. Intelligence & Chat | 0/1 | Not started | — |
+| 2. Intelligence & Chat | 0/4 | Not started | — |
 
 ---
 

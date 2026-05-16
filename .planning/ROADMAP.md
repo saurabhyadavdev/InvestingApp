@@ -122,16 +122,16 @@ Plans:
 9. Benchmark table compares My Portfolio %, Nifty 50, S&P 500, and DAX; regional rows compare India sub-portfolio vs Nifty and Germany/US/ETF vs S&P/DAX
 10. Benchmark cells render green when portfolio beats the index, red when it lags, and "—" when historical data is unavailable
 
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Heat Map vertical slice: backend daily_pct via price_history + HeatMapCard.jsx + Dashboard wiring (D-01–D-04)
+- [x] 03-01-PLAN.md — Heat Map vertical slice: backend daily_pct via price_history + HeatMapCard.jsx + Dashboard wiring (D-01–D-04)
 
 **Wave 2** *(blocked on Wave 1 completion — modifies briefing.py + Dashboard.jsx)*
 
-- [ ] 03-02-PLAN.md — Benchmark vertical slice: DataFetcher.fetch_benchmark + briefing step 7.5 + BenchmarkCard.jsx + Dashboard wiring (D-08–D-11)
+- [x] 03-02-PLAN.md — Benchmark vertical slice: DataFetcher.fetch_benchmark + briefing step 7.5 + BenchmarkCard.jsx + Dashboard wiring (D-08–D-11)
 
 **Wave 3** *(blocked on Wave 2 completion — modifies briefing.py + Dashboard.jsx + PortfolioTable.jsx)*
 
@@ -147,7 +147,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
 | 2. Intelligence & Chat | 4/4 | Complete   | 2026-05-16 |
-| 3. Polish              | 0/3 | Planning   | —          |
+| 3. Polish              | 2/3 | In Progress|  |
 
 ---
 

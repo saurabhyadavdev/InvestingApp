@@ -8,10 +8,12 @@ Supports:
 All SQLite inserts use parameterized ? placeholders — no f-string SQL.
 """
 import csv
+import json
 import logging
 import sqlite3
 import tempfile
 import os
+import urllib.request
 from typing import Optional, Union, IO
 
 logger = logging.getLogger(__name__)
@@ -92,7 +94,8 @@ def _classify_asset_type(ticker_local: str, name: str = "") -> str:
 def _classify_tr_region(isin: str) -> str:
     """
     Classify region based on ISIN country prefix.
-    DE → 'germany', US → 'us', IE/LU → 'etf', otherwise 'unknown'.
+    DE → 'germany', US → 'us', IE/LU → 'etf',
+    DK/SE/NO/FI → 'nordic', otherwise 'unknown'.
     """
     if not isin:
         return "unknown"
@@ -103,6 +106,8 @@ def _classify_tr_region(isin: str) -> str:
         return "us"
     if prefix in ("IE", "LU"):
         return "etf"
+    if prefix in ("DK", "SE", "NO", "FI"):
+        return "nordic"
     return "unknown"
 
 
@@ -404,6 +409,119 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
     finally:
         if owns_file:
             file_obj.close()
+
+
+# ---------------------------------------------------------------------------
+# Public function 2b: resolve_tr_yfinance_tickers
+# ---------------------------------------------------------------------------
+
+def resolve_tr_yfinance_tickers(db_path: str) -> int:
+    """
+    For all Trade Republic holdings with ticker_yfinance IS NULL, resolve
+    ISIN → yfinance ticker symbol using the OpenFIGI free API (no auth required).
+
+    Exchange mapping:
+      - germany  → XETRA (suffix .DE)
+      - us       → US equities (no suffix)
+      - etf      → London Stock Exchange (suffix .L)
+      - nordic   → respective Nordic exchange (suffix .CO/.ST/.OL/.HE)
+
+    Returns count of successfully resolved tickers.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT id, isin, region FROM holdings "
+            "WHERE broker='trade_republic' AND ticker_yfinance IS NULL AND isin IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return 0
+
+    # OpenFIGI free tier (no API key): max 10 items per request
+    _OPENFIGI_BATCH_SIZE = 10
+    _NORDIC_SUFFIX = {"DK": ".CO", "SE": ".ST", "NO": ".OL", "FI": ".HE"}
+    resolved: dict[int, str] = {}
+
+    for chunk_start in range(0, len(rows), _OPENFIGI_BATCH_SIZE):
+        chunk = rows[chunk_start: chunk_start + _OPENFIGI_BATCH_SIZE]
+        batch = [{"idType": "ID_ISIN", "idValue": row[1]} for row in chunk]
+        try:
+            data = json.dumps(batch).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.openfigi.com/v3/mapping",
+                data=data,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                chunk_results = json.loads(resp.read())
+        except Exception as exc:
+            logger.warning("OpenFIGI chunk %d failed: %s", chunk_start, exc)
+            continue
+
+        for i, result in enumerate(chunk_results):
+            if i >= len(chunk):
+                break
+            row_id, isin, region = chunk[i]
+            items = result.get("data", [])
+            if not items:
+                continue
+
+            ticker_yf = None
+            isin_prefix = (isin[:2].upper() if isin else "")
+
+            # Two-pass: first try preferred exchange, then fall back to German exchanges
+            # (covers Nordic/unknown stocks that trade on Frankfurt)
+            _DE_EXCHS = ("GY", "GR", "GF", "GM")
+            fallback_de: str | None = None
+
+            for item in items:
+                exch = item.get("exchCode", "")
+                ticker = item.get("ticker", "")
+                if not ticker:
+                    continue
+
+                if region == "germany" and exch in _DE_EXCHS:
+                    ticker_yf = f"{ticker}.DE"
+                    break
+                elif region == "us" and exch in ("US", "UW", "UA", "UQ"):
+                    ticker_yf = ticker
+                    break
+                elif region == "etf" and exch in ("LN", "IX", "LX"):
+                    ticker_yf = f"{ticker}.L"
+                    break
+                elif region in ("nordic", "unknown"):
+                    # Prefer German exchange (XETRA/Frankfurt) — better yfinance coverage
+                    if exch in _DE_EXCHS:
+                        ticker_yf = f"{ticker}.DE"
+                        break
+                    # Fall back to native Nordic exchange
+                    nordic_suffix = _NORDIC_SUFFIX.get(isin_prefix)
+                    if nordic_suffix and exch in ("DC", "SS", "OL", "HE"):
+                        ticker_yf = f"{ticker}{nordic_suffix}"
+                        break
+
+            if ticker_yf:
+                resolved[row_id] = ticker_yf
+
+    if not resolved:
+        return 0
+
+    conn = sqlite3.connect(db_path)
+    try:
+        for row_id, ticker_yf in resolved.items():
+            conn.execute(
+                "UPDATE holdings SET ticker_yfinance=? WHERE id=?",
+                (ticker_yf, row_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info("Resolved %d TR ISIN → yfinance tickers via OpenFIGI", len(resolved))
+    return len(resolved)
 
 
 # ---------------------------------------------------------------------------

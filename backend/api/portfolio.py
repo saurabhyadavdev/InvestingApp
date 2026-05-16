@@ -19,12 +19,30 @@ from backend.models import HoldingResponse, ImportResponse, PortfolioResponse
 from backend.core.portfolio import (
     import_zerodha_csv,
     import_trade_republic_csv,
+    resolve_tr_yfinance_tickers,
     get_portfolio_with_pl,
 )
+from backend.core.data_fetcher import DataFetcher
 
 router = APIRouter(prefix="/api")
 
 VALID_BROKERS = ("zerodha", "trade_republic")
+
+
+def _fetch_tr_prices(db_path: str) -> None:
+    """Fetch latest prices for all resolved TR holdings (best-effort, called after import)."""
+    conn = _sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT ticker_yfinance FROM holdings "
+            "WHERE broker='trade_republic' AND ticker_yfinance IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    tickers = [r[0] for r in rows if r[0]]
+    if tickers:
+        DataFetcher(db_path).fetch_holding_prices(tickers)
 
 
 @router.post("/import", response_model=ImportResponse)
@@ -67,6 +85,12 @@ async def import_portfolio(
             count = import_zerodha_csv(csv_io, settings.DB_PATH)
         else:
             count = import_trade_republic_csv(csv_io, settings.DB_PATH)
+            # Resolve ISINs → yfinance tickers, then immediately fetch prices
+            try:
+                resolve_tr_yfinance_tickers(settings.DB_PATH)
+                _fetch_tr_prices(settings.DB_PATH)
+            except Exception:
+                pass  # non-fatal
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

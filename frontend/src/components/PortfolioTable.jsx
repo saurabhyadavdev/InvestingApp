@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 
 /**
  * PortfolioTable
- * Dense table showing all holdings with P&L per UI-SPEC.
- * P&L cells colored: positive=green, negative=red, zero=neutral gray.
- * Phase 2: Rec badge column + expandable signal row (RSI, MACD, SMA, analyst, AI narrative).
+ * Dense table showing holdings for a single broker with P&L.
+ * broker="zerodha"         → primary P&L in INR
+ * broker="trade_republic"  → primary P&L in EUR
  */
 
 function getCurrencySymbol(currency) {
@@ -14,11 +14,10 @@ function getCurrencySymbol(currency) {
   return currency;
 }
 
-// CSS classes map to CSS variables: pl-positive → var(--color-positive), pl-negative → var(--color-negative)
 function getPLClass(value) {
-  if (value > 0) return 'pl-positive'; // var(--color-positive) #28A745
-  if (value < 0) return 'pl-negative'; // var(--color-negative) #DC3545
-  return 'pl-zero'; // var(--color-neutral)
+  if (value > 0) return 'pl-positive';
+  if (value < 0) return 'pl-negative';
+  return 'pl-zero';
 }
 
 function formatNum(value, decimals = 2) {
@@ -32,41 +31,47 @@ const REC_STYLES = {
   HOLD: { background: '#6C757D', color: '#fff' },
 };
 
-export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd = 0, fxRate = 90, alertTickers }) {
-  // Normalise alertTickers to a Set for O(1) lookup
+const REGION_LABELS = {
+  germany: '🇩🇪',
+  us: '🇺🇸',
+  etf: 'ETF',
+  nordic: '🇸🇪',
+  india: '🇮🇳',
+  unknown: '—',
+};
+
+export default function PortfolioTable({
+  holdings,
+  totalInr,
+  totalEur,
+  totalUsd = 0,
+  fxRate = 90,
+  alertTickers,
+  broker = 'zerodha',
+}) {
   const _alertSet = alertTickers instanceof Set
     ? alertTickers
     : new Set(alertTickers || []);
   const [expandedId, setExpandedId] = useState(null);
 
+  const isZerodha = broker === 'zerodha';
+  const plCurrency = isZerodha ? 'INR' : 'EUR';
+  const plSymbol = isZerodha ? '₹' : '€';
+
   if (!holdings || holdings.length === 0) {
     return (
-      <div className="empty-state" id="import-anchor">
-        <h2>No portfolio data yet</h2>
-        <p>
-          Import your Zerodha or Trade Republic CSV to see holdings, P&L, and allocation breakdown.
-        </p>
-        <button
-          className="btn-import"
-          onClick={() => {
-            const el = document.querySelector('.import-csv-section');
-            if (el) el.scrollIntoView({ behavior: 'smooth' });
-          }}
-        >
-          Import Portfolio
-        </button>
+      <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
+        No holdings imported yet.
       </div>
     );
   }
 
-  // Compute sums for summary row
-  const totalPlInr = holdings.reduce((sum, h) => {
-    if (h.currency === 'EUR') return sum + (h.pl || 0) * fxRate;
-    return sum + (h.pl || 0);
-  }, 0);
-  const totalPlEur = holdings.reduce((sum, h) => {
-    if (h.currency === 'INR') return sum + (h.pl || 0) / fxRate;
-    return sum + (h.pl || 0);
+  const totalPl = holdings.reduce((sum, h) => {
+    if (isZerodha) {
+      return sum + (h.currency === 'EUR' ? (h.pl || 0) * fxRate : (h.pl || 0));
+    } else {
+      return sum + (h.currency === 'INR' ? (h.pl || 0) / fxRate : (h.pl || 0));
+    }
   }, 0);
 
   return (
@@ -75,14 +80,13 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
         <thead>
           <tr>
             <th>Ticker</th>
+            {!isZerodha && <th>Name</th>}
             <th>Qty</th>
             <th>Avg Buy</th>
             <th>Current</th>
-            <th>P&amp;L (INR)</th>
+            <th>P&amp;L ({plCurrency})</th>
             <th>P&amp;L %</th>
-            <th>Currency</th>
-            <th>Region</th>
-            <th>Broker</th>
+            {!isZerodha && <th>Region</th>}
             <th>Rec</th>
             <th></th>
           </tr>
@@ -90,38 +94,49 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
         <tbody>
           {holdings.map((h, idx) => {
             const sym = getCurrencySymbol(h.currency);
-            const plInr = h.currency === 'EUR'
-              ? (h.pl || 0) * fxRate
-              : (h.pl || 0);
+            const plPrimary = isZerodha
+              ? (h.currency === 'EUR' ? (h.pl || 0) * fxRate : (h.pl || 0))
+              : (h.currency === 'INR' ? (h.pl || 0) / fxRate : (h.pl || 0));
             const rowKey = h.id || `${h.broker}-${h.ticker}-${idx}`;
+            const hasAlert = _alertSet.has(h.ticker_yfinance) || _alertSet.has(h.ticker);
             return (
               <React.Fragment key={rowKey}>
                 <tr
                   onClick={() => setExpandedId(expandedId === h.id ? null : h.id)}
                   style={{
                     cursor: 'pointer',
-                    background: (_alertSet.has(h.ticker_yfinance) || _alertSet.has(h.ticker))
-                      ? 'rgba(255, 193, 7, 0.12)'
-                      : undefined,
+                    background: hasAlert ? 'rgba(255, 193, 7, 0.12)' : undefined,
                   }}
                 >
-                  <td>{h.ticker}</td>
+                  <td>
+                    <span style={{ fontWeight: 600 }}>{h.ticker}</span>
+                    {h.asset_type === 'etf' && (
+                      <span style={{ marginLeft: 4, fontSize: '10px', background: '#E3F2FD', color: '#0066CC', padding: '1px 4px', borderRadius: 3 }}>ETF</span>
+                    )}
+                  </td>
+                  {!isZerodha && (
+                    <td style={{ fontSize: '12px', color: 'var(--color-text-secondary)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {h.name || '—'}
+                    </td>
+                  )}
                   <td>{formatNum(h.quantity, 4)}</td>
                   <td>{sym}{formatNum(h.avg_buy)}</td>
                   <td>
-                    {h.current_price !== null && h.current_price !== undefined
+                    {h.current_price != null
                       ? `${sym}${formatNum(h.current_price)}`
                       : '—'}
                   </td>
-                  <td className={getPLClass(plInr)}>
-                    ₹{formatNum(plInr)}
+                  <td className={getPLClass(plPrimary)}>
+                    {plSymbol}{formatNum(plPrimary)}
                   </td>
                   <td className={getPLClass(h.pl_pct)}>
                     {formatNum(h.pl_pct)}%
                   </td>
-                  <td>{h.currency}</td>
-                  <td>{h.region || '—'}</td>
-                  <td>{h.broker}</td>
+                  {!isZerodha && (
+                    <td style={{ fontSize: '13px' }}>
+                      {REGION_LABELS[h.region] || h.region || '—'}
+                    </td>
+                  )}
                   <td>
                     {h.rec && (
                       <span style={{ ...REC_STYLES[h.rec], padding: '4px 8px', borderRadius: '3px', fontSize: '11px', fontWeight: 700 }}>
@@ -133,7 +148,7 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
                 </tr>
                 {expandedId === h.id && (
                   <tr className="expanded-row">
-                    <td colSpan={11}>
+                    <td colSpan={isZerodha ? 9 : 10}>
                       <div className="signals-panel">
                         <div className="signals-row">
                           <span>RSI: {h.rsi_14 ?? '—'}</span>
@@ -143,7 +158,7 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
                         </div>
                         <div className="signals-row">
                           <span>Analyst: {h.analyst_rating ?? 'No analyst coverage'}</span>
-                          {h.analyst_target && <span>Target: {h.currency === 'EUR' ? '€' : '₹'}{h.analyst_target}</span>}
+                          {h.analyst_target && <span>Target: {sym}{h.analyst_target}</span>}
                           {h.analyst_num && <span>({h.analyst_num} analysts)</span>}
                         </div>
                         {h.ai_narrative
@@ -160,17 +175,20 @@ export default function PortfolioTable({ holdings, totalInr, totalEur, totalUsd 
         </tbody>
         <tfoot>
           <tr className="summary-row">
-            <td colSpan={4}><strong>Total</strong></td>
-            <td className={getPLClass(totalPlInr)}>
-              <strong>₹{formatNum(totalPlInr)}</strong>
+            <td colSpan={isZerodha ? 4 : 5}><strong>Total P&amp;L</strong></td>
+            <td className={getPLClass(totalPl)}>
+              <strong>{plSymbol}{formatNum(totalPl)}</strong>
             </td>
-            <td></td>
-            <td colSpan={5}>
-              <span style={{ color: 'var(--color-neutral)', fontSize: '12px' }}>
-                (EUR equiv: €{formatNum(totalPlEur)})
-                {' '}
-                (${totalUsd ? formatNum(totalUsd) : '—'} USD)
-              </span>
+            <td colSpan={isZerodha ? 4 : 4}>
+              {isZerodha ? (
+                <span style={{ color: 'var(--color-neutral)', fontSize: '12px' }}>
+                  (€{formatNum(totalPl / fxRate)} EUR equiv)
+                </span>
+              ) : (
+                <span style={{ color: 'var(--color-neutral)', fontSize: '12px' }}>
+                  (₹{formatNum(totalPl * fxRate)} INR equiv)
+                </span>
+              )}
             </td>
           </tr>
         </tfoot>

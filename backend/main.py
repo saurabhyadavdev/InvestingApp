@@ -31,6 +31,7 @@ from backend.api.chat import router as chat_router
 from backend.api.alerts import router as alerts_router
 from backend.scheduler import init_scheduler
 from backend.core.briefing import BriefingOrchestrator
+from backend.core.portfolio import resolve_tr_yfinance_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,14 @@ async def lifespan(app: FastAPI):
         os.makedirs(data_dir, exist_ok=True)
 
     create_schema(settings.DB_PATH)
+
+    # Resolve any TR ISINs → yfinance tickers that weren't mapped yet (best-effort)
+    try:
+        resolved = resolve_tr_yfinance_tickers(settings.DB_PATH)
+        if resolved:
+            logger.info("Resolved %d TR ISIN → yfinance tickers on startup", resolved)
+    except Exception as exc:
+        logger.warning("TR ticker resolution on startup failed (non-fatal): %s", exc)
 
     # Start APScheduler with morning briefing at 08:55 Europe/Berlin
     scheduler = BackgroundScheduler()

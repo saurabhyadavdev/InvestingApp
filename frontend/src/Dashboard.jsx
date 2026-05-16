@@ -237,6 +237,9 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
   const totalEur = portfolio.total_eur || 0;
   const totalUsd = portfolio.total_usd ?? 0;
 
+  const zerodhaHoldings = holdings.filter(h => h.broker === 'zerodha');
+  const trHoldings = holdings.filter(h => h.broker === 'trade_republic');
+
   // Convert indices dict to array for IndicesCard (which expects array)
   const indicesArray = Object.values(indices || {});
 
@@ -315,19 +318,48 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
         <ImportCSV onImportSuccess={handleImportSuccess} />
       </div>
 
-      {/* Your Portfolio */}
+      {/* India Portfolio — Zerodha */}
       <div className="portfolio-section">
         <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-          Your Portfolio
+          🇮🇳 India Portfolio — Zerodha
         </div>
-        <PortfolioTable
-          holdings={holdings}
-          totalInr={totalInr}
-          totalEur={totalEur}
-          totalUsd={totalUsd}
-          fxRate={fx.rate ?? 90}
-          alertTickers={alertTickers}
-        />
+        {zerodhaHoldings.length === 0 && holdings.length > 0 ? (
+          <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
+            No Zerodha holdings. Import a Zerodha CSV above.
+          </div>
+        ) : (
+          <PortfolioTable
+            holdings={zerodhaHoldings}
+            totalInr={totalInr}
+            totalEur={totalEur}
+            totalUsd={totalUsd}
+            fxRate={fx.rate ?? 90}
+            alertTickers={alertTickers}
+            broker="zerodha"
+          />
+        )}
+      </div>
+
+      {/* International Portfolio — Trade Republic */}
+      <div className="portfolio-section">
+        <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
+          🇩🇪 International Portfolio — Trade Republic
+        </div>
+        {trHoldings.length === 0 && holdings.length > 0 ? (
+          <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
+            No Trade Republic holdings. Import a Trade Republic CSV above.
+          </div>
+        ) : (
+          <PortfolioTable
+            holdings={trHoldings}
+            totalInr={totalInr}
+            totalEur={totalEur}
+            totalUsd={totalUsd}
+            fxRate={fx.rate ?? 90}
+            alertTickers={alertTickers}
+            broker="trade_republic"
+          />
+        )}
       </div>
 
       {/* Allocation */}

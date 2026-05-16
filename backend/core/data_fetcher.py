@@ -15,6 +15,7 @@ import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+import finnhub
 import ta
 import yfinance as yf
 from newsapi import NewsApiClient
@@ -550,6 +551,120 @@ class DataFetcher:
             conn.close()
 
         return result
+
+    def fetch_analyst(self, tickers: list) -> dict:
+        """
+        Fetch analyst consensus ratings and price targets from Finnhub for each ticker.
+
+        Parameters
+        ----------
+        tickers : list[str]
+            yfinance ticker symbols (e.g. ["RELIANCE.NS", "SAP.DE", "AAPL"]).
+
+        Returns
+        -------
+        dict
+            Keyed by original yfinance ticker. Each value is a dict with:
+              rating (str "BUY"|"HOLD"|"SELL" or None),
+              target_mean (float or None),
+              num_analysts (int or None).
+
+        Behaviour
+        ---------
+        - Returns {} immediately if FINNHUB_KEY is empty (no crash).
+        - Ticker translation: ".NS" → "NSE:<base>"; ".DE" → strip suffix; US pass-through.
+        - Caches to analyst_cache via INSERT OR REPLACE with ? placeholders (T-02-16).
+        - Each per-ticker Finnhub call is individually wrapped in try/except; continues.
+        """
+        if not settings.FINNHUB_KEY:
+            logger.warning("fetch_analyst: FINNHUB_KEY not set — skipping analyst fetch")
+            return {}
+
+        client = finnhub.Client(api_key=settings.FINNHUB_KEY)
+        today_str = date.today().isoformat()
+        results: dict = {}
+        conn = sqlite3.connect(self.db_path)
+        try:
+            for ticker in tickers:
+                if not ticker:
+                    continue
+                try:
+                    # Check analyst_cache first
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT rating, target_mean, num_analysts FROM analyst_cache WHERE symbol = ? AND date = ?",
+                        (ticker, today_str),
+                    )
+                    cached_row = cursor.fetchone()
+                    if cached_row:
+                        results[ticker] = {
+                            "rating": cached_row[0],
+                            "target_mean": cached_row[1],
+                            "num_analysts": cached_row[2],
+                        }
+                        logger.info("fetch_analyst: cache hit for %s", ticker)
+                        continue
+
+                    # Translate ticker to Finnhub symbol format
+                    if ticker.endswith(".NS"):
+                        finnhub_symbol = "NSE:" + ticker[:-3]
+                    elif ticker.endswith(".DE"):
+                        finnhub_symbol = ticker[:-3]
+                    else:
+                        finnhub_symbol = ticker
+
+                    # Fetch recommendation trends
+                    rating = None
+                    try:
+                        trends = client.recommendation_trends(finnhub_symbol)
+                        if trends:
+                            t = trends[0]
+                            buy = (t.get("buy", 0) or 0) + (t.get("strongBuy", 0) or 0)
+                            sell = (t.get("sell", 0) or 0) + (t.get("strongSell", 0) or 0)
+                            hold = t.get("hold", 0) or 0
+                            total = buy + sell + hold
+                            if total > 0:
+                                if buy / total > 0.5:
+                                    rating = "BUY"
+                                elif sell / total > 0.4:
+                                    rating = "SELL"
+                                else:
+                                    rating = "HOLD"
+                    except Exception as exc:
+                        logger.warning("fetch_analyst: recommendation_trends failed for %s: %s", ticker, exc)
+
+                    # Fetch price target
+                    target_mean = None
+                    num_analysts = None
+                    try:
+                        pt = client.price_target(finnhub_symbol)
+                        target_mean = pt.get("targetMean")
+                        num_analysts = pt.get("numberAnalysts")
+                    except Exception as exc:
+                        logger.warning("fetch_analyst: price_target failed for %s: %s", ticker, exc)
+
+                    # Cache to analyst_cache
+                    conn.execute(
+                        "INSERT OR REPLACE INTO analyst_cache (symbol, date, rating, target_mean, num_analysts) VALUES (?, ?, ?, ?, ?)",
+                        (ticker, today_str, rating, target_mean, num_analysts),
+                    )
+
+                    results[ticker] = {
+                        "rating": rating,
+                        "target_mean": target_mean,
+                        "num_analysts": num_analysts,
+                    }
+
+                except Exception as exc:
+                    logger.warning("fetch_analyst: failed for %s: %s", ticker, exc)
+                    continue
+
+            conn.commit()
+        finally:
+            conn.close()
+
+        logger.info("fetch_analyst: fetched analyst data for %d/%d tickers", len(results), len(tickers))
+        return results
 
     # ------------------------------------------------------------------
     # Private helpers

@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 from backend.core.data_fetcher import DataFetcher
 from backend.core.portfolio import get_portfolio_with_pl
+from backend.core.ai_synthesis import synthesise_holdings
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,11 @@ class BriefingOrchestrator:
           3. Compute portfolio P&L
           4. Fetch technical signals (RSI/MACD/SMA) and merge into holdings
           5. Fetch news (holdings + India/Germany/US macro tabs)
-          6. Assemble briefing dict
-          7. INSERT into briefing_snapshots
-          8. Return briefing dict
+          6. Fetch analyst consensus ratings from Finnhub
+          7. AI synthesis — enrich holdings with rec + ai_narrative via Claude Haiku 4.5
+          8. Assemble briefing dict
+          9. INSERT into briefing_snapshots
+          10. Return briefing dict
 
         Exceptions in individual sections are caught and logged — partial data
         is better than no briefing (fail-open per T-04-04 guidance).
@@ -129,7 +132,23 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: news fetch failed: %s", exc)
             news_data = {"holdings": [], "india": [], "germany": [], "us": []}
 
-        # Step 6: Assemble briefing
+        # Step 6 — Analyst: fetch Finnhub consensus ratings and price targets
+        try:
+            analyst_data = self.fetcher.fetch_analyst(holding_tickers)
+        except Exception as exc:
+            logger.error("BriefingOrchestrator: analyst fetch failed: %s", exc)
+            analyst_data = {}
+
+        # Step 7 — AI synthesis: enrich holdings with rec + ai_narrative via Claude Haiku 4.5
+        try:
+            cash_by_broker = portfolio_data.get("cash_by_broker", {})
+            enriched = synthesise_holdings(portfolio_data, signals_data, analyst_data, cash_by_broker)
+            portfolio_data["holdings"] = enriched
+        except Exception as exc:
+            logger.error("BriefingOrchestrator: AI synthesis failed: %s", exc)
+            # holdings remain with signals already merged from step 4; rec/ai_narrative will be None
+
+        # Step 8: Assemble briefing
         now_utc = datetime.now(timezone.utc)
         now_ist = now_utc.astimezone(_IST)
         briefing_date = now_ist.strftime("%Y-%m-%d")
@@ -144,7 +163,7 @@ class BriefingOrchestrator:
             "briefing_date": briefing_date,
         }
 
-        # Step 7: INSERT into briefing_snapshots, then prune old rows (keep last 30)
+        # Step 9: INSERT into briefing_snapshots, then prune old rows (keep last 30)
         try:
             briefing_json = json.dumps(briefing)
             conn = sqlite3.connect(self.db_path)

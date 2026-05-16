@@ -553,3 +553,38 @@ def test_fx_alert_triggered_at_exact_threshold(test_client):
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["alert_triggered"] is True
+
+
+# ---------------------------------------------------------------------------
+# Plan 02-04 tests — POST /api/chat
+# ---------------------------------------------------------------------------
+
+def test_post_chat_no_api_key_returns_unavailable(test_client):
+    """POST /api/chat with empty ANTHROPIC_API_KEY returns 200 with response containing 'unavailable'."""
+    with patch("backend.api.chat.settings") as mock_settings:
+        mock_settings.ANTHROPIC_API_KEY = ""
+        response = test_client.post(
+            "/api/chat",
+            json={
+                "message": "What is the RSI for RELIANCE?",
+                "briefing": {"portfolio": {"holdings": []}, "indices": {}, "fx": {}},
+            },
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "response" in body
+    assert "unavailable" in body["response"].lower()
+
+
+def test_post_chat_returns_200_structure(test_client):
+    """POST /api/chat always returns 200 with a 'response' string key."""
+    with patch("backend.api.chat.settings") as mock_settings:
+        mock_settings.ANTHROPIC_API_KEY = ""
+        response = test_client.post(
+            "/api/chat",
+            json={"message": "test", "briefing": {}},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert "response" in body
+    assert isinstance(body["response"], str)

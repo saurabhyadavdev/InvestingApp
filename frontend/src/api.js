@@ -87,6 +87,27 @@ export async function fetchHealth() {
  * @param {File} file - File object from <input type="file">
  * @returns {Promise<{broker, imported_count, message}>}
  */
+/**
+ * sendChat — POST /api/chat to ask a question about today's briefing.
+ * @param {string} message - User question
+ * @param {object} briefing - Full briefing object from GET /api/briefing
+ * @returns {Promise<string>} Chat response text
+ */
+export async function sendChat(message, briefing) {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, briefing }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+    const detail = errorBody.detail || response.statusText;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  const data = await response.json();
+  return data.response;
+}
+
 export async function importCSV(broker, file) {
   const formData = new FormData();
   formData.append('broker', broker);

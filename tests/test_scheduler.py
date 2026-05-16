@@ -58,6 +58,7 @@ def test_briefing_generate_creates_snapshot(db_path):
         MockDF.return_value.fetch_holding_prices.return_value = {}
         MockDF.return_value.fetch_signals.return_value = {}
         MockDF.return_value.fetch_news.return_value = {"holdings": [], "india": [], "germany": [], "us": []}
+        MockDF.return_value.fetch_analyst.return_value = {}
         mock_portfolio.return_value = _mock_portfolio_result()
 
         orchestrator = BriefingOrchestrator(db_path)
@@ -212,6 +213,7 @@ def test_startup_generates_briefing_if_missing(db_path):
         MockDF.return_value.fetch_holding_prices.return_value = {}
         MockDF.return_value.fetch_signals.return_value = {}
         MockDF.return_value.fetch_news.return_value = {"holdings": [], "india": [], "germany": [], "us": []}
+        MockDF.return_value.fetch_analyst.return_value = {}
         mock_portfolio.return_value = _mock_portfolio_result()
 
         orchestrator = BriefingOrchestrator(db_path)

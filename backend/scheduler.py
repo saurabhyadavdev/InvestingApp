@@ -51,9 +51,9 @@ def init_scheduler(scheduler: BackgroundScheduler, db_path: str) -> None:
     """
     scheduler.add_job(
         _run_morning_briefing,
-        CronTrigger(hour=7, minute=0, second=0, timezone="Asia/Kolkata"),
+        CronTrigger(hour=8, minute=55, second=0, timezone="Europe/Berlin"),
         id="morning_briefing",
         replace_existing=True,
         kwargs={"db_path": db_path},
     )
-    logger.info("Registered 'morning_briefing' job — fires at 07:00 Asia/Kolkata daily")
+    logger.info("Registered 'morning_briefing' job — fires at 08:55 Europe/Berlin daily")

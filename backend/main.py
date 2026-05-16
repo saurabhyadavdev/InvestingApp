@@ -45,21 +45,36 @@ async def lifespan(app: FastAPI):
 
     create_schema(settings.DB_PATH)
 
-    # Start APScheduler with morning briefing at 07:00 IST
+    # Start APScheduler with morning briefing at 08:55 Europe/Berlin
     scheduler = BackgroundScheduler()
     init_scheduler(scheduler, settings.DB_PATH)
     scheduler.start()
-    logger.info("APScheduler started — morning briefing at 07:00 Asia/Kolkata")
+    logger.info("APScheduler started — morning briefing at 08:55 Europe/Berlin")
 
-    # Generate a briefing immediately on first startup if none exists
+    # On startup: if no briefing exists for today, schedule first run at 09:00 Berlin.
+    # If a briefing already exists for today, do nothing (user restarted mid-day).
     try:
+        from datetime import datetime
+        import pytz
+        berlin = pytz.timezone("Europe/Berlin")
+        today_berlin = datetime.now(berlin).strftime("%Y-%m-%d")
         orchestrator = BriefingOrchestrator(settings.DB_PATH)
         latest = orchestrator.get_latest()
-        if latest is None:
-            logger.info("No cached briefing found — generating initial briefing on startup")
-            orchestrator.generate()
+        latest_date = (latest or {}).get("briefing_date")
+        if latest_date != today_berlin:
+            # No briefing for today yet — add a one-shot job at 09:00 Berlin
+            from apscheduler.triggers.cron import CronTrigger
+            scheduler.add_job(
+                lambda: orchestrator.generate(),
+                CronTrigger(hour=9, minute=0, second=0, timezone="Europe/Berlin"),
+                id="first_run_today",
+                replace_existing=True,
+            )
+            logger.info("No briefing for today — scheduled first run at 09:00 Europe/Berlin")
+        else:
+            logger.info("Briefing for today already exists — skipping startup generation")
     except Exception as exc:
-        logger.warning("Startup briefing generation failed (non-fatal): %s", exc)
+        logger.warning("Startup briefing scheduling failed (non-fatal): %s", exc)
 
     yield
 

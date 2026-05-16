@@ -256,22 +256,20 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
     Returns: count of rows inserted.
     Raises: ValueError if required columns are missing from both formats.
     """
-    # Column aliases: new TR format → internal field names
+    # Column map: lowercase CSV header → internal field name.
+    # 'type' takes priority over 'category' — both can map to "Type" but 'type' is explicit.
     _TR_ALIASES = {
         "datetime": "Date",
         "date": "Date",
-        "type": "Type",
-        "category": "Type",       # fallback if 'type' missing
-        "symbol": "ISIN",         # new format uses symbol instead of ISIN
+        "symbol": "ISIN",         # new format uses symbol (contains ISIN value)
         "isin": "ISIN",
         "shares": "Quantity",
         "quantity": "Quantity",
         "price": "Price per Unit",
         "price per unit": "Price per Unit",
         "name": "Security name",
-        "asset_class": "asset_class",
     }
-    required_cols = {"Date", "Type", "ISIN", "Quantity", "Price per Unit"}
+    required_cols = {"Date", "ISIN", "Quantity", "Price per Unit"}
 
     if isinstance(source, str):
         file_obj = open(source, newline="", encoding="utf-8-sig")
@@ -283,45 +281,43 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
     try:
         reader = csv.DictReader(file_obj)
         all_rows = list(reader)
-        raw_fieldnames = set(reader.fieldnames or [])
-
-        # Normalise header: lowercase lookup for alias matching
-        col_map = {}  # raw_col → internal_name
-        for raw in raw_fieldnames:
-            internal = _TR_ALIASES.get(raw.strip().lower())
-            if internal:
-                col_map[raw] = internal
+        # Preserve column order so priority resolution is deterministic
+        raw_fieldnames = list(reader.fieldnames or [])
+        raw_lower = {f.strip().lower(): f for f in raw_fieldnames}
 
         def _get(row, internal):
-            """Get a value by internal field name, trying all aliased raw keys."""
-            for raw, mapped in col_map.items():
-                if mapped == internal:
-                    val = row.get(raw)
+            """Get value by internal field name using the alias map."""
+            for alias, mapped in _TR_ALIASES.items():
+                if mapped == internal and alias in raw_lower:
+                    val = row.get(raw_lower[alias])
                     if val is not None:
                         return val
             return None
 
-        mapped_fieldnames = set(col_map.values())
-        missing = required_cols - mapped_fieldnames
-        if missing:
-            raise ValueError(f"CSV missing required columns: {', '.join(sorted(missing))}")
+        # Detect which column carries buy/sell type info.
+        # New format: 'type' column has "BUY"/"SELL"; 'category' has "TRADING"/"CASH".
+        # Legacy format: 'Type' column has "Buy"/"Sell".
+        type_col = raw_lower.get("type") or raw_lower.get("Type")
 
-        # Detect new format: 'symbol' used instead of 'ISIN' (no real ISIN in the file)
-        new_format = "symbol" in {k.strip().lower() for k in raw_fieldnames}
+        mapped_fieldnames = {_TR_ALIASES[a] for a in _TR_ALIASES if a in raw_lower}
+        missing = required_cols - mapped_fieldnames
+        if missing or not type_col:
+            raise ValueError(f"CSV missing required columns: {', '.join(sorted(missing or {'Type'}))}")
+
+        # Detect new format: 'symbol' column present (contains ISIN values)
+        new_format = "symbol" in raw_lower
 
         # Aggregate by ISIN/symbol: {key: {total_units, buy_cost, buy_units, name}}
-        # Sells only reduce net units; cost basis is computed from buy transactions only.
         aggregated: dict[str, dict] = {}
 
         for row in all_rows:
-            tx_type = (_get(row, "Type") or "").strip().lower()
+            # Read transaction type directly from the resolved type column
+            tx_type = (row.get(type_col) or "").strip().upper()
 
-            # New format uses 'order' category for buy/sell; type field has 'buy'/'sell'
-            # Also handle 'savings_plan' as buy
-            if tx_type not in ("buy", "sell", "savings_plan"):
+            # Accept BUY / SELL / SAVINGS_PLAN (savings plan = recurring buy)
+            if tx_type not in ("BUY", "SELL", "SAVINGS_PLAN"):
                 continue
-            if tx_type == "savings_plan":
-                tx_type = "buy"
+            is_buy = tx_type in ("BUY", "SAVINGS_PLAN")
 
             isin = (_get(row, "ISIN") or "").strip()
             if not isin:
@@ -337,12 +333,9 @@ def import_trade_republic_csv(source: Union[str, IO], db_path: str) -> int:
                 continue
 
             if isin not in aggregated:
-                aggregated[isin] = {"total_units": 0.0, "buy_cost": 0.0, "buy_units": 0.0, "name": name, "symbol": isin, "asset_class": asset_class}
-            # Keep the symbol separate from isin for new-format files
-            if new_format:
-                aggregated[isin]["symbol"] = isin  # isin field holds the symbol in new format
+                aggregated[isin] = {"total_units": 0.0, "buy_cost": 0.0, "buy_units": 0.0, "name": name, "asset_class": asset_class}
 
-            if tx_type == "buy":
+            if is_buy:
                 aggregated[isin]["total_units"] += qty
                 aggregated[isin]["buy_units"] += qty
                 aggregated[isin]["buy_cost"] += qty * price

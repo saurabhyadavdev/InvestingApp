@@ -18,6 +18,7 @@ import { triggerRefresh, setFXAlert } from './api.js';
 import ImportCSV from './components/ImportCSV.jsx';
 import PortfolioTable from './components/PortfolioTable.jsx';
 import AllocationCard from './components/AllocationCard.jsx';
+import HeatMapCard from './components/HeatMapCard.jsx';
 import IndicesCard from './components/IndicesCard.jsx';
 import FXCard from './components/FXCard.jsx';
 import NewsCard from './components/NewsCard.jsx';
@@ -271,6 +272,11 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           cashByBroker={cashByBroker}
           fxRate={fx.rate ?? 90}
         />
+      </div>
+
+      {/* Portfolio Heat Map */}
+      <div className="portfolio-section">
+        <HeatMapCard holdings={holdings} fxRate={fx?.rate ?? 90} />
       </div>
 
       {/* Market Indices */}

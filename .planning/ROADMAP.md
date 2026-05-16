@@ -11,6 +11,7 @@
 
 - [x] **Phase 1: Core Daily Briefing** — Unified portfolio import and morning briefing with market indices
 - [x] **Phase 2: Intelligence & Chat** — News, technical signals, AI synthesis, and chat interface (completed 2026-05-16)
+- [ ] **Phase 3: Polish** — Heat map, price/signal alerts, benchmark comparison
 
 ---
 
@@ -98,12 +99,55 @@ Plans:
 
 ---
 
+### Phase 3: Polish
+
+**Goal:** Enhance the daily briefing with richer visual insights and proactive monitoring — portfolio heat map (D-01–D-04), configurable price/signal alerts with browser notifications (D-05–D-07), and benchmark comparison against market indices (D-08–D-11).
+
+**Mode:** mvp
+
+**Depends on:** Phase 2
+
+**Requirements:** D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, D-09, D-10, D-11
+
+**Success Criteria** (what must be TRUE):
+
+1. User sees a Portfolio Heat Map card below AllocationCard with tiles sized by position value and colored by today's daily P&L %
+2. Each heat map tile shows ticker + daily % change; hover/tap shows full holding name and current price
+3. User can open an Alert Configuration modal via a gear icon in the dashboard header
+4. User can configure four alert types: price target per holding, % daily move (global), RSI threshold (global), analyst rating change (global)
+5. Alert configuration persists across briefings via the SQLite settings table; fx_alert_threshold is preserved
+6. When alerts fire, a sticky amber AlertsBanner lists them at the top of the dashboard and matching PortfolioTable rows are highlighted amber
+7. When alerts fire, an OS-level browser notification appears (Notification.requestPermission() called from gear-icon click, not useEffect)
+8. User sees a Benchmark Comparison card below IndicesCard with a 1M/3M/YTD/1Y period switcher
+9. Benchmark table compares My Portfolio %, Nifty 50, S&P 500, and DAX; regional rows compare India sub-portfolio vs Nifty and Germany/US/ETF vs S&P/DAX
+10. Benchmark cells render green when portfolio beats the index, red when it lags, and "—" when historical data is unavailable
+
+**Plans:** 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Heat Map vertical slice: backend daily_pct via price_history + HeatMapCard.jsx + Dashboard wiring (D-01–D-04)
+
+**Wave 2** *(blocked on Wave 1 completion — modifies briefing.py + Dashboard.jsx)*
+
+- [ ] 03-02-PLAN.md — Benchmark vertical slice: DataFetcher.fetch_benchmark + briefing step 7.5 + BenchmarkCard.jsx + Dashboard wiring (D-08–D-11)
+
+**Wave 3** *(blocked on Wave 2 completion — modifies briefing.py + Dashboard.jsx + PortfolioTable.jsx)*
+
+- [ ] 03-03-PLAN.md — Alerts vertical slice: alert_evaluator + briefing step 4.5 + POST/GET /api/alerts + SettingsModal + AlertsBanner + PortfolioTable highlighting + browser Notification (D-05–D-07)
+
+**UI hint:** yes
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
 | 2. Intelligence & Chat | 4/4 | Complete   | 2026-05-16 |
+| 3. Polish              | 0/3 | Planning   | —          |
 
 ---
 
@@ -117,4 +161,6 @@ Plans:
 
 **Phase 2** (10 reqs) adds the intelligence layer: holdings-specific and macro news, technical signals, analyst data, AI synthesis, and chat for follow-up questions.
 
-This vertical-slice structure delivers a complete user workflow in Phase 1 (user can see their portfolio every morning) and extends with intelligence in Phase 2 (user knows what to do with it).
+**Phase 3** (11 decisions D-01–D-11) adds polish: portfolio heat map, configurable alerts with browser notifications, and benchmark comparison vs market indices.
+
+This vertical-slice structure delivers a complete user workflow in Phase 1 (user can see their portfolio every morning) and extends with intelligence in Phase 2 (user knows what to do with it). Phase 3 sharpens monitoring (alerts) and adds context (heat map + benchmark).

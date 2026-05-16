@@ -16,7 +16,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from backend.core.data_fetcher import DataFetcher
-from backend.core.portfolio import get_portfolio_with_pl
+from backend.core.portfolio import compute_daily_pct, get_portfolio_with_pl
 from backend.core.ai_synthesis import synthesise_holdings
 
 logger = logging.getLogger(__name__)
@@ -106,17 +106,38 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: portfolio fetch failed: %s", exc)
             portfolio_data = {}
 
-        # Step 4: Technical signals — fetch RSI/MACD/SMA for each holding
+        # Step 3.5: Enrich holdings with daily_pct (today vs prev close from price_history)
         try:
-            holding_tickers = [h["ticker"] for h in portfolio_data.get("holdings", [])]
-            signals_data = self.fetcher.fetch_signals(holding_tickers)
+            for holding in portfolio_data.get("holdings", []):
+                ticker = holding.get("ticker_yfinance") or holding.get("ticker")
+                if not ticker:
+                    holding["daily_pct"] = None
+                else:
+                    holding["daily_pct"] = compute_daily_pct(self.db_path, ticker)
+        except Exception as exc:
+            logger.warning("BriefingOrchestrator: daily_pct enrichment failed: %s", exc)
+            for holding in portfolio_data.get("holdings", []):
+                holding.setdefault("daily_pct", None)
+
+        # Step 4: Technical signals — fetch RSI/MACD/SMA for each holding.
+        # Use ticker_yfinance (e.g. "AAVAS.NS") rather than ticker_local ("AAVAS") so that
+        # yfinance can resolve the correct exchange. Holdings without a mapped ticker_yfinance
+        # (e.g. Trade Republic positions awaiting ISIN lookup) are skipped gracefully.
+        try:
+            signal_tickers = [
+                h["ticker_yfinance"]
+                for h in portfolio_data.get("holdings", [])
+                if h.get("ticker_yfinance")
+            ]
+            signals_data = self.fetcher.fetch_signals(signal_tickers)
         except Exception as exc:
             logger.error("BriefingOrchestrator: signals fetch failed: %s", exc)
             signals_data = {}
 
-        # Merge signals into each holding dict
+        # Merge signals into each holding dict — keyed by ticker_yfinance
         for holding in portfolio_data.get("holdings", []):
-            sig = signals_data.get(holding["ticker"], {})
+            yf_ticker = holding.get("ticker_yfinance")
+            sig = signals_data.get(yf_ticker, {}) if yf_ticker else {}
             holding["rsi_14"] = sig.get("rsi_14", None)
             holding["macd"] = sig.get("macd", None)
             holding["macd_signal"] = sig.get("macd_signal", None)

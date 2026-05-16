@@ -12,9 +12,42 @@ import logging
 import sqlite3
 import tempfile
 import os
-from typing import Union, IO
+from typing import Optional, Union, IO
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Public function 0: compute_daily_pct
+# ---------------------------------------------------------------------------
+
+def compute_daily_pct(db_path: str, ticker: str) -> Optional[float]:
+    """
+    Compute the daily % change for a ticker from the two most recent rows
+    in price_history.
+
+    Returns (close_today - close_prev) / close_prev * 100 when exactly two
+    rows are available and the previous close is non-zero.
+    Returns None in all other cases (single row, zero rows, zero prev close,
+    or missing ticker).
+
+    Security note: uses parameterized ? placeholders — no f-string SQL.
+    """
+    if not ticker:
+        return None
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT close FROM price_history WHERE ticker = ? ORDER BY date DESC LIMIT 2",
+            (ticker,),
+        ).fetchall()
+        if len(rows) == 2 and rows[1][0] and rows[1][0] != 0:
+            return (rows[0][0] - rows[1][0]) / rows[1][0] * 100
+        return None
+    except Exception:
+        return None
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +376,8 @@ def get_portfolio_with_pl(
         {
             "holdings": [
                 {
-                    "id": int, "ticker": str, "isin": str|None, "name": str|None,
+                    "id": int, "ticker": str, "ticker_yfinance": str|None,
+                    "isin": str|None, "name": str|None,
                     "quantity": float, "avg_buy": float, "current_price": float|None,
                     "pl": float, "pl_pct": float,
                     "pl_inr": float, "pl_usd": float,
@@ -367,6 +401,7 @@ def get_portfolio_with_pl(
                 h.id,
                 h.broker,
                 h.ticker_local,
+                h.ticker_yfinance,
                 h.isin,
                 h.name,
                 h.units,
@@ -408,6 +443,7 @@ def get_portfolio_with_pl(
             holdings.append({
                 "id": row["id"],
                 "ticker": row["ticker_local"],
+                "ticker_yfinance": row["ticker_yfinance"],
                 "isin": row["isin"],
                 "name": row["name"],
                 "quantity": units,
@@ -449,6 +485,7 @@ def get_portfolio_with_pl(
         holdings.append({
             "id": row["id"],
             "ticker": row["ticker_local"],
+            "ticker_yfinance": row["ticker_yfinance"],
             "isin": row["isin"],
             "name": row["name"],
             "quantity": units,

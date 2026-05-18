@@ -96,6 +96,7 @@ export default function PortfolioTable({
             <th>{isTradersPlace ? 'Stmt Price' : 'Avg Buy'}</th>
             <th>Current</th>
             <th>Today</th>
+            <th>Today %</th>
             <th>P&amp;L ({plCurrency})</th>
             <th>P&amp;L %</th>
             {!isZerodha && <th>Region</th>}
@@ -144,9 +145,10 @@ export default function PortfolioTable({
                       : '—'}
                   </td>
                   <td className={getPLClass(dayPlPrimary)}>
-                    {dayPlPrimary != null
-                      ? `${plSymbol}${formatNum(dayPlPrimary)} (${formatNum(h.day_change_pct)}%)`
-                      : '—'}
+                    {dayPlPrimary != null ? `${plSymbol}${formatNum(dayPlPrimary)}` : '—'}
+                  </td>
+                  <td className={getPLClass(h.day_change_pct)}>
+                    {h.day_change_pct != null ? `${formatNum(h.day_change_pct)}%` : '—'}
                   </td>
                   <td className={getPLClass(plPrimary)}>
                     {plSymbol}{formatNum(plPrimary)}
@@ -170,7 +172,7 @@ export default function PortfolioTable({
                 </tr>
                 {expandedId === h.id && (
                   <tr className="expanded-row">
-                    <td colSpan={isZerodha ? 10 : 11}>
+                    <td colSpan={isZerodha ? 11 : 12}>
                       <div className="signals-panel">
                         <div className="signals-row">
                           <span>RSI: {h.rsi_14 ?? '—'}</span>
@@ -203,6 +205,7 @@ export default function PortfolioTable({
                 {hasDayData ? `${plSymbol}${formatNum(totalDayPl)}` : '—'}
               </strong>
             </td>
+            <td></td>
             <td className={getPLClass(totalPl)}>
               <strong>{plSymbol}{formatNum(totalPl)}</strong>
             </td>

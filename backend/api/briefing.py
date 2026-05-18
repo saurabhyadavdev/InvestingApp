@@ -60,6 +60,18 @@ async def get_briefing() -> dict:
             and fx_rate >= alert_threshold
         )
 
+    # Backfill day_change / day_change_pct from cached daily_pct when missing
+    # (handles briefings stored before these fields were added)
+    for holding in latest.get("portfolio", {}).get("holdings", []):
+        if holding.get("day_change") is None and holding.get("daily_pct") is not None:
+            pct = holding["daily_pct"]
+            price = holding.get("current_price")
+            units = holding.get("quantity") or 0
+            if price is not None and (100 + pct) != 0:
+                price_change = price * pct / (100 + pct)
+                holding["day_change"] = round(price_change * units, 2)
+                holding["day_change_pct"] = round(pct, 2)
+
     # Add fetched_at timestamp (time this request was served, not when generated)
     latest["fetched_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return latest

@@ -107,18 +107,30 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: portfolio fetch failed: %s", exc)
             portfolio_data = {}
 
-        # Step 3.5: Enrich holdings with daily_pct (today vs prev close from price_history)
+        # Step 3.5: Enrich holdings with daily_pct / day_change / day_change_pct
         try:
             for holding in portfolio_data.get("holdings", []):
                 ticker = holding.get("ticker_yfinance") or holding.get("ticker")
                 if not ticker:
                     holding["daily_pct"] = None
+                    holding["day_change"] = None
+                    holding["day_change_pct"] = None
                 else:
-                    holding["daily_pct"] = compute_daily_pct(self.db_path, ticker)
+                    pct = compute_daily_pct(self.db_path, ticker)
+                    holding["daily_pct"] = pct
+                    holding["day_change_pct"] = round(pct, 2) if pct is not None else None
+                    if pct is not None and holding.get("current_price") is not None:
+                        units = holding.get("quantity") or holding.get("units") or 0
+                        price_change = holding["current_price"] * pct / (100 + pct)
+                        holding["day_change"] = round(price_change * units, 2)
+                    else:
+                        holding["day_change"] = None
         except Exception as exc:
             logger.warning("BriefingOrchestrator: daily_pct enrichment failed: %s", exc)
             for holding in portfolio_data.get("holdings", []):
                 holding.setdefault("daily_pct", None)
+                holding.setdefault("day_change", None)
+                holding.setdefault("day_change_pct", None)
 
         # Step 4: Technical signals — fetch RSI/MACD/SMA for each holding.
         # Use ticker_yfinance (e.g. "AAVAS.NS") rather than ticker_local ("AAVAS") so that

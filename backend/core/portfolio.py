@@ -710,12 +710,19 @@ def get_portfolio_with_pl(
                 h.region,
                 h.asset_type,
                 p.close  AS current_price,
-                p.date   AS price_date
+                p.date   AS price_date,
+                prev_p.close AS prev_close
             FROM holdings h
             LEFT JOIN price_history p ON h.ticker_yfinance = p.ticker
                 AND p.date = (
                     SELECT MAX(date) FROM price_history
                     WHERE ticker = h.ticker_yfinance
+                )
+            LEFT JOIN price_history prev_p ON h.ticker_yfinance = prev_p.ticker
+                AND prev_p.date = (
+                    SELECT MAX(date) FROM price_history
+                    WHERE ticker = h.ticker_yfinance
+                    AND date < (SELECT MAX(date) FROM price_history WHERE ticker = h.ticker_yfinance)
                 )
             ORDER BY h.broker, h.region
         """)
@@ -733,6 +740,7 @@ def get_portfolio_with_pl(
         cost = row["cost_per_unit"]
         units = row["units"]
         current_price = row["current_price"]  # may be None
+        prev_close = row["prev_close"]  # may be None
 
         if row["asset_type"] == "cash":
             # Cash rows: no P&L, just accumulate cash balance
@@ -753,6 +761,8 @@ def get_portfolio_with_pl(
                 "pl_pct": 0.0,
                 "pl_inr": 0.0,
                 "pl_usd": 0.0,
+                "day_change": None,
+                "day_change_pct": None,
                 "currency": row["currency"],
                 "region": row["region"],
                 "asset_type": row["asset_type"],
@@ -782,6 +792,13 @@ def get_portfolio_with_pl(
             # INR or any other currency: divide by USDINR rate
             pl_usd = round(pl / fx_rate_usdinr, 2)
 
+        if current_price is not None and prev_close is not None and prev_close > 0:
+            day_change = round((current_price - prev_close) * units, 2)
+            day_change_pct = round((current_price - prev_close) / prev_close * 100, 2)
+        else:
+            day_change = None
+            day_change_pct = None
+
         holdings.append({
             "id": row["id"],
             "ticker": row["ticker_local"],
@@ -795,6 +812,8 @@ def get_portfolio_with_pl(
             "pl_pct": pl_pct,
             "pl_inr": pl_inr,
             "pl_usd": pl_usd,
+            "day_change": day_change,
+            "day_change_pct": day_change_pct,
             "currency": row["currency"],
             "region": row["region"],
             "asset_type": row["asset_type"],

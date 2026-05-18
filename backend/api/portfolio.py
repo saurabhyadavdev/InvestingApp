@@ -171,6 +171,8 @@ async def get_portfolio():
             pl=h["pl"],
             pl_pct=h["pl_pct"],
             pl_usd=h.get("pl_usd", 0.0),
+            day_change=h.get("day_change"),
+            day_change_pct=h.get("day_change_pct"),
             currency=h["currency"],
             region=h.get("region"),
             asset_type=h.get("asset_type"),

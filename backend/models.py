@@ -16,6 +16,8 @@ class HoldingResponse(BaseModel):
     pl: float
     pl_pct: float
     pl_usd: float = 0.0
+    day_change: Optional[float] = None
+    day_change_pct: Optional[float] = None
     currency: str
     region: Optional[str] = None
     asset_type: Optional[str] = None

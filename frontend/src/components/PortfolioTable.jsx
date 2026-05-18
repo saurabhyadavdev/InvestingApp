@@ -75,6 +75,16 @@ export default function PortfolioTable({
     }
   }, 0);
 
+  const totalDayPl = holdings.reduce((sum, h) => {
+    if (h.day_change == null) return sum;
+    if (isZerodha) {
+      return sum + (h.currency === 'EUR' ? h.day_change * fxRate : h.day_change);
+    } else {
+      return sum + (h.currency === 'INR' ? h.day_change / fxRate : h.day_change);
+    }
+  }, 0);
+  const hasDayData = holdings.some(h => h.day_change != null);
+
   return (
     <div className="portfolio-table-wrapper">
       <table className="portfolio-table">
@@ -85,6 +95,7 @@ export default function PortfolioTable({
             <th>Qty</th>
             <th>{isTradersPlace ? 'Stmt Price' : 'Avg Buy'}</th>
             <th>Current</th>
+            <th>Today</th>
             <th>P&amp;L ({plCurrency})</th>
             <th>P&amp;L %</th>
             {!isZerodha && <th>Region</th>}
@@ -98,6 +109,11 @@ export default function PortfolioTable({
             const plPrimary = isZerodha
               ? (h.currency === 'EUR' ? (h.pl || 0) * fxRate : (h.pl || 0))
               : (h.currency === 'INR' ? (h.pl || 0) / fxRate : (h.pl || 0));
+            const dayPlPrimary = h.day_change == null ? null : (
+              isZerodha
+                ? (h.currency === 'EUR' ? h.day_change * fxRate : h.day_change)
+                : (h.currency === 'INR' ? h.day_change / fxRate : h.day_change)
+            );
             const rowKey = h.id || `${h.broker}-${h.ticker}-${idx}`;
             const hasAlert = _alertSet.has(h.ticker_yfinance) || _alertSet.has(h.ticker);
             return (
@@ -127,6 +143,11 @@ export default function PortfolioTable({
                       ? `${sym}${formatNum(h.current_price)}`
                       : '—'}
                   </td>
+                  <td className={getPLClass(dayPlPrimary)}>
+                    {dayPlPrimary != null
+                      ? `${plSymbol}${formatNum(dayPlPrimary)} (${formatNum(h.day_change_pct)}%)`
+                      : '—'}
+                  </td>
                   <td className={getPLClass(plPrimary)}>
                     {plSymbol}{formatNum(plPrimary)}
                   </td>
@@ -149,7 +170,7 @@ export default function PortfolioTable({
                 </tr>
                 {expandedId === h.id && (
                   <tr className="expanded-row">
-                    <td colSpan={isZerodha ? 9 : 10}>
+                    <td colSpan={isZerodha ? 10 : 11}>
                       <div className="signals-panel">
                         <div className="signals-row">
                           <span>RSI: {h.rsi_14 ?? '—'}</span>
@@ -177,10 +198,15 @@ export default function PortfolioTable({
         <tfoot>
           <tr className="summary-row">
             <td colSpan={isZerodha ? 4 : 5}><strong>Total P&amp;L</strong></td>
+            <td className={getPLClass(hasDayData ? totalDayPl : null)}>
+              <strong>
+                {hasDayData ? `${plSymbol}${formatNum(totalDayPl)}` : '—'}
+              </strong>
+            </td>
             <td className={getPLClass(totalPl)}>
               <strong>{plSymbol}{formatNum(totalPl)}</strong>
             </td>
-            <td colSpan={isZerodha ? 4 : 4}>
+            <td colSpan={isZerodha ? 3 : 4}>
               {isZerodha ? (
                 <span style={{ color: 'var(--color-neutral)', fontSize: '12px' }}>
                   (€{formatNum(totalPl / fxRate)} EUR equiv)

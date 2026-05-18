@@ -120,6 +120,15 @@ Plan: 03-01 complete (2/2 automated tasks), awaiting human checkpoint
 
 ---
 
+## Quick Tasks Completed
+
+| Date | Slug | Description |
+|------|------|-------------|
+| 2026-05-18 | fix-heatmap-duplicates | Deduplicate Portfolio Heat Map tiles by ticker_yfinance/isin |
+| 2026-05-18 | benchmark-1d-1w | Add 1D and 1W windows to Benchmark Comparison |
+
+---
+
 ## Session Continuity
 
 Last session: 2026-05-16T12:12:00.068Z

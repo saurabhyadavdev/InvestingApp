@@ -16,7 +16,7 @@
  */
 import React, { useState } from 'react';
 
-const WINDOWS = ['1M', '3M', 'YTD', '1Y'];
+const WINDOWS = ['1D', '1W', '1M', '3M', 'YTD', '1Y'];
 
 const INDEX_LABELS = {
   '^NSEI':  'Nifty 50',
@@ -123,7 +123,7 @@ function DashCell() {
 }
 
 export default function BenchmarkCard({ benchmarkData }) {
-  const [activePeriod, setActivePeriod] = useState('1M');
+  const [activePeriod, setActivePeriod] = useState('1D');
 
   // Empty / loading guard
   const isEmpty =

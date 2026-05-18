@@ -15,6 +15,16 @@ from backend.core.data_fetcher import DataFetcher, _window_start
 class TestWindowStart(unittest.TestCase):
     """Tests for the module-level _window_start helper."""
 
+    def test_1d(self):
+        result = _window_start("1D")
+        expected = date.today() - timedelta(days=1)
+        self.assertEqual(result, expected)
+
+    def test_1w(self):
+        result = _window_start("1W")
+        expected = date.today() - timedelta(days=7)
+        self.assertEqual(result, expected)
+
     def test_1m(self):
         result = _window_start("1M")
         expected = date.today() - timedelta(days=30)
@@ -63,7 +73,7 @@ class TestFetchBenchmarkEmpty(unittest.TestCase):
         self.assertIn("indices", result)
         self.assertIn("regional", result)
 
-        expected_windows = ["1M", "3M", "YTD", "1Y"]
+        expected_windows = ["1D", "1W", "1M", "3M", "YTD", "1Y"]
         self.assertEqual(result["windows"], expected_windows)
 
         # All portfolio windows None

@@ -47,7 +47,7 @@ def _window_start(window: str) -> date:
     Parameters
     ----------
     window : str
-        One of "1M", "3M", "YTD", "1Y".
+        One of "1D", "1W", "1M", "3M", "YTD", "1Y".
 
     Raises
     ------
@@ -55,6 +55,10 @@ def _window_start(window: str) -> date:
         If window is not one of the supported values.
     """
     today = date.today()
+    if window == "1D":
+        return today - timedelta(days=1)
+    if window == "1W":
+        return today - timedelta(days=7)
     if window == "1M":
         return today - timedelta(days=30)
     if window == "3M":
@@ -715,7 +719,7 @@ class DataFetcher:
 
     def fetch_benchmark(self, holdings: list) -> dict:
         """
-        Compute portfolio and index returns for windows: 1M, 3M, YTD, 1Y.
+        Compute portfolio and index returns for windows: 1D, 1W, 1M, 3M, YTD, 1Y.
 
         Parameters
         ----------
@@ -733,7 +737,7 @@ class DataFetcher:
         Security note: no SQL is executed; all yfinance calls are read-only.
         Fail-open: individual ticker/index failures return None for that cell.
         """
-        WINDOWS = ["1M", "3M", "YTD", "1Y"]
+        WINDOWS = ["1D", "1W", "1M", "3M", "YTD", "1Y"]
         INDEX_TICKERS = ["^NSEI", "^GSPC", "^GDAXI"]
 
         # Empty shape — returned on failure or empty input

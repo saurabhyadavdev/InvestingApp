@@ -1,5 +1,20 @@
 import React, { useMemo } from 'react';
 
+const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/;
+
+/** Return a short display label for a holding tile. */
+function getDisplayLabel(holding) {
+  if (ISIN_RE.test(holding.ticker)) {
+    // ISIN stored as ticker — prefer name (first word or first 10 chars)
+    if (holding.name) {
+      const firstWord = holding.name.split(/[\s,/-]/)[0];
+      return firstWord.length <= 10 ? firstWord : firstWord.slice(0, 9) + '…';
+    }
+    return holding.ticker.slice(0, 6);
+  }
+  return holding.ticker;
+}
+
 /**
  * HeatMapCard
  * Displays portfolio holdings as proportional color-coded tiles,
@@ -39,14 +54,37 @@ export default function HeatMapCard({ holdings, fxRate = 90 }) {
         h.quantity > 0
     );
 
+    // Deduplicate: same stock may appear in multiple brokers (same ISIN/ticker_yfinance).
+    // Merge by ticker_yfinance → isin → ticker, summing quantities.
+    const seen = new Map();
+    for (const h of filtered) {
+      const key = h.ticker_yfinance || h.isin || h.ticker;
+      if (!seen.has(key)) {
+        seen.set(key, { ...h });
+      } else {
+        const existing = seen.get(key);
+        existing.quantity = (existing.quantity || 0) + (h.quantity || 0);
+        if (existing.current_price == null) existing.current_price = h.current_price;
+        if (existing.daily_pct == null) existing.daily_pct = h.daily_pct;
+      }
+    }
+    const deduped = Array.from(seen.values());
+
     let total = 0;
-    const mapped = filtered.map((h) => {
+    const mapped = deduped.map((h) => {
       const valueInr =
         h.currency === 'EUR'
           ? h.current_price * h.quantity * fxRate
           : h.current_price * h.quantity;
       total += valueInr;
       return { ...h, valueInr };
+    });
+
+    // Sort: most loss first → most gain last (nulls go to the middle)
+    mapped.sort((a, b) => {
+      const ap = a.daily_pct ?? 0;
+      const bp = b.daily_pct ?? 0;
+      return ap - bp;
     });
 
     return { tiles: mapped, totalValue: total };
@@ -151,7 +189,7 @@ export default function HeatMapCard({ holdings, fxRate = 90 }) {
                   textAlign: 'center',
                 }}
               >
-                {t.ticker}
+                {getDisplayLabel(t)}
               </span>
               <span
                 style={{

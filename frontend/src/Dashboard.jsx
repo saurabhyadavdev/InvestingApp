@@ -27,6 +27,7 @@ import FXCard from './components/FXCard.jsx';
 import NewsCard from './components/NewsCard.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import WeatherWidget from './components/WeatherWidget.jsx';
+import TrendingStocksCard from './components/TrendingStocksCard.jsx';
 
 /**
  * Format a UTC ISO timestamp to "HH:MM IST, YYYY-MM-DD" for the footer.
@@ -262,6 +263,11 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
     <div className="page" style={{ paddingBottom: '44px' }}>
       {/* Weather — always visible, independent fetch */}
       <WeatherWidget />
+
+      {/* Trending stocks — always visible, independent fetch */}
+      <div className="portfolio-section" style={{ marginTop: 0 }}>
+        <TrendingStocksCard />
+      </div>
 
       {/* Header */}
       <div

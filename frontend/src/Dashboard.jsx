@@ -26,6 +26,7 @@ import BenchmarkCard from './components/BenchmarkCard.jsx';
 import FXCard from './components/FXCard.jsx';
 import NewsCard from './components/NewsCard.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
+import WeatherWidget from './components/WeatherWidget.jsx';
 
 /**
  * Format a UTC ISO timestamp to "HH:MM IST, YYYY-MM-DD" for the footer.
@@ -100,7 +101,15 @@ function formatBriefingDate(dateStr) {
  *   loading {boolean} - True while initial fetch is in progress
  *   onRefresh {function} - Callback to reload briefing after refresh
  */
+const TABS = [
+  { id: 'overview',       label: 'Overview' },
+  { id: 'zerodha',        label: '🇮🇳 Zerodha' },
+  { id: 'trade_republic', label: '🇩🇪 Trade Republic' },
+  { id: 'traders_place',  label: '🏦 Traders Place' },
+];
+
 export default function Dashboard({ briefing, loading, onRefresh }) {
+  const [activeTab, setActiveTab] = useState('overview');
   const [refreshing, setRefreshing] = useState(false);
 
   // Alert settings modal state
@@ -177,6 +186,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
   if (loading) {
     return (
       <div className="page">
+        <WeatherWidget />
         <div
           style={{
             display: 'flex',
@@ -204,6 +214,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
     });
     return (
       <div className="page">
+        <WeatherWidget />
         <div className="header">
           <div>
             <h1>Morning Briefing</h1>
@@ -249,6 +260,9 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
 
   return (
     <div className="page" style={{ paddingBottom: '44px' }}>
+      {/* Weather — always visible, independent fetch */}
+      <WeatherWidget />
+
       {/* Header */}
       <div
         className="header"
@@ -311,137 +325,177 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
         </div>
       </div>
 
-      {/* Alert Banner — sticky amber bar listing fired alerts */}
+      {/* Alert Banner */}
       <AlertsBanner alertsFired={alertsFired} />
 
-      {/* Import Holdings */}
+      {/* Import Holdings — always visible */}
       <div className="portfolio-section">
         <ImportCSV onImportSuccess={handleImportSuccess} />
       </div>
 
-      {/* India Portfolio — Zerodha */}
-      <div className="portfolio-section">
-        <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-          🇮🇳 India Portfolio — Zerodha
-        </div>
-        {zerodhaHoldings.length === 0 && holdings.length > 0 ? (
-          <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
-            No Zerodha holdings. Import a Zerodha CSV above.
-          </div>
-        ) : (
-          <PortfolioTable
-            holdings={zerodhaHoldings}
-            totalInr={totalInr}
-            totalEur={totalEur}
-            totalUsd={totalUsd}
-            fxRate={fx.rate ?? 90}
-            alertTickers={alertTickers}
-            broker="zerodha"
-          />
-        )}
+      {/* Tab Bar */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 0,
+          borderBottom: '2px solid var(--color-border)',
+          margin: '0 32px',
+          marginBottom: 0,
+        }}
+      >
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                background: 'none',
+                border: 'none',
+                borderBottom: isActive ? '2px solid #0066CC' : '2px solid transparent',
+                marginBottom: '-2px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: isActive ? 700 : 400,
+                color: isActive ? '#0066CC' : 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'color 0.15s',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* International Portfolio — Trade Republic */}
-      <div className="portfolio-section">
-        <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-          🇩🇪 International Portfolio — Trade Republic
-        </div>
-        {trHoldings.length === 0 && holdings.length > 0 ? (
-          <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
-            No Trade Republic holdings. Import a Trade Republic CSV above.
+      {/* Tab: Overview */}
+      {activeTab === 'overview' && (
+        <>
+          <div className="portfolio-section">
+            <HeatMapCard holdings={holdings} fxRate={fx?.rate ?? 90} />
           </div>
-        ) : (
-          <PortfolioTable
-            holdings={trHoldings}
-            totalInr={totalInr}
-            totalEur={totalEur}
-            totalUsd={totalUsd}
-            fxRate={fx.rate ?? 90}
-            alertTickers={alertTickers}
-            broker="trade_republic"
-          />
-        )}
-      </div>
-
-      {/* Traders Place Portfolio */}
-      {(tpHoldings.length > 0 || holdings.length === 0) && (
-        <div className="portfolio-section">
-          <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-            🏦 Traders Place Portfolio
+          <div className="portfolio-section">
+            <AllocationCard
+              holdings={holdings}
+              cashByBroker={cashByBroker}
+              fxRate={fx.rate ?? 90}
+            />
           </div>
-          {tpHoldings.length === 0 ? (
-            <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
-              No Traders Place holdings. Import a quarterly PDF above.
-              <span style={{ marginLeft: 8, fontSize: '11px', color: '#6C757D' }}>
-                (P&amp;L shown vs. last quarterly statement price)
-              </span>
+          <div className="portfolio-section">
+            <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
+              Market Indices
             </div>
-          ) : (
-            <>
-              <div style={{ fontSize: '11px', color: '#6C757D', marginBottom: 8 }}>
-                P&amp;L shown vs. quarter-end price from last imported statement
+            <IndicesCard indices={indicesArray} />
+          </div>
+          <div className="portfolio-section">
+            <BenchmarkCard benchmarkData={briefing?.benchmark_data} />
+          </div>
+          <div className="portfolio-section">
+            <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
+              EUR/INR Rate
+            </div>
+            <FXCard
+              fx={Object.keys(fx).length > 0 ? fx : null}
+              onSetAlert={handleSetAlert}
+            />
+          </div>
+          <div className="portfolio-section">
+            <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
+              Market Intelligence
+            </div>
+            <NewsCard briefing={briefing} />
+          </div>
+        </>
+      )}
+
+      {/* Tab: Zerodha */}
+      {activeTab === 'zerodha' && (
+        <>
+          <div className="portfolio-section">
+            {zerodhaHoldings.length === 0 ? (
+              <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
+                No Zerodha holdings. Import a Zerodha CSV above.
               </div>
+            ) : (
               <PortfolioTable
-                holdings={tpHoldings}
+                holdings={zerodhaHoldings}
                 totalInr={totalInr}
                 totalEur={totalEur}
                 totalUsd={totalUsd}
                 fxRate={fx.rate ?? 90}
                 alertTickers={alertTickers}
-                broker="traders_place"
+                broker="zerodha"
               />
-            </>
-          )}
-        </div>
+            )}
+          </div>
+          <div className="portfolio-section">
+            <BenchmarkCard benchmarkData={briefing?.benchmark_data} />
+          </div>
+        </>
       )}
 
-      {/* Allocation */}
-      <div className="portfolio-section">
-        <AllocationCard
-          holdings={holdings}
-          cashByBroker={cashByBroker}
-          fxRate={fx.rate ?? 90}
-        />
-      </div>
+      {/* Tab: Trade Republic */}
+      {activeTab === 'trade_republic' && (
+        <>
+          <div className="portfolio-section">
+            {trHoldings.length === 0 ? (
+              <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
+                No Trade Republic holdings. Import a Trade Republic CSV above.
+              </div>
+            ) : (
+              <PortfolioTable
+                holdings={trHoldings}
+                totalInr={totalInr}
+                totalEur={totalEur}
+                totalUsd={totalUsd}
+                fxRate={fx.rate ?? 90}
+                alertTickers={alertTickers}
+                broker="trade_republic"
+              />
+            )}
+          </div>
+          <div className="portfolio-section">
+            <BenchmarkCard benchmarkData={briefing?.benchmark_data} />
+          </div>
+        </>
+      )}
 
-      {/* Portfolio Heat Map */}
-      <div className="portfolio-section">
-        <HeatMapCard holdings={holdings} fxRate={fx?.rate ?? 90} />
-      </div>
+      {/* Tab: Traders Place */}
+      {activeTab === 'traders_place' && (
+        <>
+          <div className="portfolio-section">
+            {tpHoldings.length === 0 ? (
+              <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
+                No Traders Place holdings. Import a quarterly PDF above.
+                <span style={{ marginLeft: 8, fontSize: '11px', color: '#6C757D' }}>
+                  (P&amp;L shown vs. last quarterly statement price)
+                </span>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '11px', color: '#6C757D', marginBottom: 8 }}>
+                  P&amp;L shown vs. quarter-end price from last imported statement
+                </div>
+                <PortfolioTable
+                  holdings={tpHoldings}
+                  totalInr={totalInr}
+                  totalEur={totalEur}
+                  totalUsd={totalUsd}
+                  fxRate={fx.rate ?? 90}
+                  alertTickers={alertTickers}
+                  broker="traders_place"
+                />
+              </>
+            )}
+          </div>
+          <div className="portfolio-section">
+            <BenchmarkCard benchmarkData={briefing?.benchmark_data} />
+          </div>
+        </>
+      )}
 
-      {/* Market Indices */}
-      <div className="portfolio-section">
-        <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-          Market Indices
-        </div>
-        <IndicesCard indices={indicesArray} />
-      </div>
-
-      {/* Benchmark Comparison */}
-      <div className="portfolio-section">
-        <BenchmarkCard benchmarkData={briefing?.benchmark_data} />
-      </div>
-
-      {/* EUR/INR Rate */}
-      <div className="portfolio-section">
-        <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-          EUR/INR Rate
-        </div>
-        <FXCard
-          fx={Object.keys(fx).length > 0 ? fx : null}
-          onSetAlert={handleSetAlert}
-        />
-      </div>
-
-      {/* Market Intelligence */}
-      <div className="portfolio-section">
-        <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-          Market Intelligence
-        </div>
-        <NewsCard briefing={briefing} />
-      </div>
-
-      {/* Footer — Data Status */}
+      {/* Footer */}
       <footer
         style={{
           padding: '16px 32px',
@@ -451,9 +505,9 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           gap: '8px',
           color: '#6C757D',
           fontSize: '12px',
+          marginTop: 24,
         }}
       >
-        {/* Clock icon (inline SVG Feather clock) */}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="16"
@@ -473,7 +527,6 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
       </footer>
       <ChatPanel briefing={briefing} />
 
-      {/* Settings Modal — mounts once, visibility controlled by isSettingsOpen */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

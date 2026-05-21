@@ -30,6 +30,7 @@ from backend.api.refresh import router as refresh_router
 from backend.api.chat import router as chat_router
 from backend.api.alerts import router as alerts_router
 from backend.api.trending import router as trending_router
+from backend.api.stock import router as stock_router
 from backend.scheduler import init_scheduler
 from backend.core.briefing import BriefingOrchestrator
 from backend.core.portfolio import resolve_tr_yfinance_tickers
@@ -130,6 +131,7 @@ app.include_router(refresh_router)
 app.include_router(chat_router)
 app.include_router(alerts_router)
 app.include_router(trending_router)
+app.include_router(stock_router)
 
 
 if __name__ == "__main__":

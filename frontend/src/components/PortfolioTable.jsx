@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import StockDetailPanel from './StockDetailPanel';
 
 /**
  * PortfolioTable
@@ -173,23 +174,7 @@ export default function PortfolioTable({
                 {expandedId === h.id && (
                   <tr className="expanded-row">
                     <td colSpan={isZerodha ? 11 : 12}>
-                      <div className="signals-panel">
-                        <div className="signals-row">
-                          <span>RSI: {h.rsi_14 ?? '—'}</span>
-                          <span>MACD: {h.macd ?? '—'}</span>
-                          <span>SMA50: {h.sma_50 ?? '—'}</span>
-                          <span>SMA200: {h.sma_200 ?? '—'}</span>
-                        </div>
-                        <div className="signals-row">
-                          <span>Analyst: {h.analyst_rating ?? 'No analyst coverage'}</span>
-                          {h.analyst_target && <span>Target: {sym}{h.analyst_target}</span>}
-                          {h.analyst_num && <span>({h.analyst_num} analysts)</span>}
-                        </div>
-                        {h.ai_narrative
-                          ? <p className="ai-narrative">{h.ai_narrative}</p>
-                          : <p className="ai-narrative" style={{ color: 'var(--color-text-secondary)' }}>AI synthesis unavailable</p>
-                        }
-                      </div>
+                      <StockDetailPanel ticker={h.ticker_yfinance} currencySymbol={sym} />
                     </td>
                   </tr>
                 )}

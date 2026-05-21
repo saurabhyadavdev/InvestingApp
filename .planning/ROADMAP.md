@@ -12,6 +12,7 @@
 - [x] **Phase 1: Core Daily Briefing** — Unified portfolio import and morning briefing with market indices
 - [x] **Phase 2: Intelligence & Chat** — News, technical signals, AI synthesis, and chat interface (completed 2026-05-16)
 - [x] **Phase 3: Polish** — Heat map, price/signal alerts, benchmark comparison (completed 2026-05-16)
+- [ ] **Phase 4: On-Demand Stock Detail Panel** — Tabbed live-fetch stock detail panel inside expanded portfolio rows
 
 ---
 
@@ -141,6 +142,42 @@ Plans:
 
 ---
 
+### Phase 4: On-Demand Stock Detail Panel
+
+**Goal:** When a user clicks any holding row in PortfolioTable (across all broker tabs — Zerodha, Trade Republic, Traders Place), the expanded row loads a tabbed detail panel that fetches fresh data on-demand: technical signals (RSI/MACD/MAs), analyst ratings, and an AI block covering why the stock moved today, a buy/sell/hold rationale, and a short-term outlook.
+
+**Mode:** mvp
+
+**Depends on:** Phase 3
+
+**Requirements:** (no new v1 requirement IDs — feature built on decisions D-01 through D-10 in CONTEXT.md)
+
+**Success Criteria** (what must be TRUE):
+
+1. User can click any holding row and see a tabbed panel (Signals | Analyst | AI Analysis) inside the expanded row
+2. Each tab loads independently with its own spinner; Signals resolves first, AI last
+3. Signals tab shows RSI, MACD, and moving average values fetched live for that ticker
+4. Analyst tab shows consensus rating, price target, and analyst count fetched live
+5. AI Analysis tab shows three named sections: Today's Move / Recommendation Rationale / Short-term Outlook
+6. Panel works identically on all three broker tabs (Zerodha, Trade Republic, Traders Place)
+7. Live fetch triggers on expand — no stale briefing dependency
+8. Missing data renders gracefully as "—" / "No coverage" (no crash, no empty panel)
+
+**Plans:** 2 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Backend endpoint + structured AI variant: GET /api/stock/{ticker}/detail, StockDetailResponse model, synthesise_holding_ondemand, router registration (D-01, D-03, D-04, D-05, D-07, D-09, D-10)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — Frontend tabbed panel: StockDetailPanel.jsx, fetchStockDetail in api.js, PortfolioTable integration replacing static signals-panel (D-01, D-02, D-06, D-07, D-08)
+
+**UI hint:** yes
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -148,6 +185,7 @@ Plans:
 | 1. Core Daily Briefing | 6/6 | Complete   | 2026-05-13 |
 | 2. Intelligence & Chat | 4/4 | Complete   | 2026-05-16 |
 | 3. Polish              | 3/3 | Complete   | 2026-05-16 |
+| 4. On-Demand Stock Detail | 0/2 | Pending | — |
 
 ---
 
@@ -163,4 +201,6 @@ Plans:
 
 **Phase 3** (11 decisions D-01–D-11) adds polish: portfolio heat map, configurable alerts with browser notifications, and benchmark comparison vs market indices.
 
-This vertical-slice structure delivers a complete user workflow in Phase 1 (user can see their portfolio every morning) and extends with intelligence in Phase 2 (user knows what to do with it). Phase 3 sharpens monitoring (alerts) and adds context (heat map + benchmark).
+**Phase 4** (10 decisions D-01–D-10) adds on-demand depth: clicking any holding row loads a live-fetched tabbed panel with signals, analyst data, and structured AI analysis.
+
+This vertical-slice structure delivers a complete user workflow in Phase 1 (user can see their portfolio every morning) and extends with intelligence in Phase 2 (user knows what to do with it). Phase 3 sharpens monitoring (alerts) and adds context (heat map + benchmark). Phase 4 adds on-demand depth for any holding in the portfolio.

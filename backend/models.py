@@ -129,3 +129,21 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
+
+# ---------------------------------------------------------------------------
+# Phase 04: On-demand stock detail models
+# ---------------------------------------------------------------------------
+
+class StockDetailAI(BaseModel):
+    today_move: Optional[str] = None
+    recommendation: Optional[str] = None
+    outlook: Optional[str] = None
+
+
+class StockDetailResponse(BaseModel):
+    ticker: str
+    signals: Optional[dict] = None
+    analyst: Optional[dict] = None
+    ai: Optional[StockDetailAI] = None
+    rec: Optional[str] = None

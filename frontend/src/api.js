@@ -159,3 +159,11 @@ export async function importCSV(broker, file) {
 
   return response.json();
 }
+
+export async function fetchStockDetail(ticker) {
+  const response = await fetch(`/api/stock/${encodeURIComponent(ticker)}/detail`);
+  if (!response.ok) {
+    throw new Error(`Stock detail fetch failed: ${response.status}`);
+  }
+  return response.json();
+}

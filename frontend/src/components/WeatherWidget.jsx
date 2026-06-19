@@ -104,7 +104,7 @@ function CityWeather({ city }) {
             <div style={styles.dayIcon}>{wmoIcon(daily.weathercode[i])}</div>
             <div style={styles.dayTemps}>
               <span style={{ color: '#E76F51' }}>{Math.round(daily.temperature_2m_max[i])}°</span>
-              <span style={{ color: '#90A4AE', marginLeft: 4 }}>{Math.round(daily.temperature_2m_min[i])}°</span>
+              <span style={{ color: 'var(--color-text-secondary)', marginLeft: 4 }}>{Math.round(daily.temperature_2m_min[i])}°</span>
             </div>
           </div>
         ))}
@@ -129,15 +129,15 @@ const styles = {
     gap: 16,
     padding: '12px 32px',
     flexWrap: 'wrap',
-    borderBottom: '1px solid var(--color-border, #E9ECEF)',
-    background: 'var(--color-surface, #F8F9FA)',
+    borderBottom: '1px solid var(--color-border)',
+    background: 'var(--color-bg-card)',
   },
   card: {
     flex: 1,
     minWidth: 320,
-    background: '#fff',
+    background: 'var(--color-bg-card)',
     borderRadius: 8,
-    border: '1px solid #E9ECEF',
+    border: '1px solid var(--color-border)',
     padding: '12px 16px',
   },
   todayRow: {
@@ -149,7 +149,7 @@ const styles = {
   cityName: {
     fontWeight: 700,
     fontSize: 15,
-    color: '#212529',
+    color: 'var(--color-text-primary)',
     minWidth: 56,
   },
   bigIcon: {
@@ -159,16 +159,16 @@ const styles = {
   tempBig: {
     fontSize: 22,
     fontWeight: 700,
-    color: '#212529',
+    color: 'var(--color-text-primary)',
     lineHeight: 1.1,
   },
   condition: {
     fontSize: 12,
-    color: '#6C757D',
+    color: 'var(--color-text-secondary)',
   },
   hiLo: {
     fontSize: 11,
-    color: '#90A4AE',
+    color: 'var(--color-text-secondary)',
   },
   forecastStrip: {
     display: 'flex',
@@ -181,11 +181,11 @@ const styles = {
     textAlign: 'center',
     padding: '4px 2px',
     borderRadius: 6,
-    background: '#F8F9FA',
+    background: 'var(--color-bg-card)',
   },
   dayLabel: {
     fontSize: 10,
-    color: '#6C757D',
+    color: 'var(--color-text-secondary)',
     marginBottom: 2,
     whiteSpace: 'nowrap',
   },

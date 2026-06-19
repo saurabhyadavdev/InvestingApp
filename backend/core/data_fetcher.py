@@ -12,6 +12,7 @@ Security note (T-03-02, T-03-04):
 import json
 import logging
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -106,6 +107,55 @@ def _cache_signals(conn: sqlite3.Connection, ticker: str, today_str: str, sig: d
         logger.warning("_cache_signals: DB write failed for %s: %s", ticker, exc)
 
 
+# Exchange timezones, for dating live-price overlays.
+_TZ_KOLKATA = ZoneInfo("Asia/Kolkata")
+_TZ_BERLIN = ZoneInfo("Europe/Berlin")
+_TZ_NEWYORK = ZoneInfo("America/New_York")
+
+# Map index market labels (from _INDEX_META) to their exchange timezone.
+_MARKET_TZ: dict = {
+    "NSE": _TZ_KOLKATA,
+    "XETRA": _TZ_BERLIN,
+    "NYSE": _TZ_NEWYORK,
+    "NASDAQ": _TZ_NEWYORK,
+}
+
+
+def _exchange_tz(ticker: str) -> ZoneInfo:
+    """Return the exchange timezone for a yfinance ticker suffix (defaults to US/Eastern)."""
+    if ticker.endswith(".NS") or ticker.endswith(".BO"):
+        return _TZ_KOLKATA
+    if ticker.endswith(".DE") or ticker.endswith(".F"):
+        return _TZ_BERLIN
+    return _TZ_NEWYORK
+
+
+def _trading_day_in_tz(tz: ZoneInfo) -> str:
+    """Return the current/most-recent trading-day date (YYYY-MM-DD) in *tz*.
+
+    Unlike get_market_reference_date (most recently *closed* session), this returns
+    today during an open or just-closed session, rolling back only over weekends.
+    """
+    local = datetime.now(timezone.utc).astimezone(tz)
+    d = local.date()
+    wd = d.weekday()  # Monday=0, Sunday=6
+    if wd == 5:    # Saturday → Friday
+        d -= timedelta(days=1)
+    elif wd == 6:  # Sunday → Friday
+        d -= timedelta(days=2)
+    return d.isoformat()
+
+
+def _current_session_date(ticker: str) -> str:
+    """Current trading-day date in the ticker's exchange tz (for the holding overlay)."""
+    return _trading_day_in_tz(_exchange_tz(ticker))
+
+
+def _session_date_for_market(market: str) -> str:
+    """Current trading-day date for an index market label (for the indices overlay)."""
+    return _trading_day_in_tz(_MARKET_TZ.get(market, _TZ_NEWYORK))
+
+
 def _format_time_ago(published_at_str: str) -> str:
     """
     Parse a NewsAPI ISO 8601 publishedAt string and return a human-readable
@@ -178,6 +228,34 @@ class DataFetcher:
             logger.warning("yfinance.download returned empty DataFrame")
             return {}
 
+        # Intraday batch: used as a fallback live overlay when the daily bar lags
+        # and fast_info fails (notably some Yahoo index tickers such as Sensex).
+        intraday_overlays: dict[str, dict] = {}
+        try:
+            intraday_raw = yf.download(
+                tickers=" ".join(_INDICES),
+                period="1d",
+                interval="5m",
+                progress=False,
+                threads=True,
+            )
+            if intraday_raw is not None and not intraday_raw.empty:
+                for sym in _INDICES:
+                    try:
+                        df_i = self._extract_symbol_frame(intraday_raw, sym, _INDICES)
+                        if df_i is None:
+                            continue
+                        df_i = df_i.sort_index(ascending=True).dropna(subset=["Close"])
+                        if not df_i.empty:
+                            intraday_overlays[sym] = {
+                                "date": df_i.index[-1].date().isoformat(),
+                                "close": float(df_i["Close"].iloc[-1]),
+                            }
+                    except Exception:
+                        continue
+        except Exception as exc:
+            logger.warning("fetch_indices: intraday session-date fetch failed: %s", exc)
+
         results: dict[str, dict] = {}
         conn = sqlite3.connect(self.db_path)
         try:
@@ -222,6 +300,69 @@ class DataFetcher:
                         "date": ref_date,
                         "market_label": meta["name"],
                     }
+
+                    intraday_overlay = intraday_overlays.get(symbol)
+
+                    def apply_intraday_overlay() -> bool:
+                        if not intraday_overlay:
+                            return False
+                        intraday_date = intraday_overlay.get("date")
+                        intraday_close = intraday_overlay.get("close")
+                        if (
+                            not intraday_date
+                            or intraday_date < ref_date
+                            or intraday_close is None
+                            or intraday_close != intraday_close
+                        ):
+                            return False
+
+                        prev_for_change = close_last if intraday_date > ref_date else close_prev
+                        if prev_for_change == 0:
+                            return False
+
+                        entry["close"] = float(intraday_close)
+                        entry["change_pct"] = round(
+                            (float(intraday_close) - prev_for_change) / prev_for_change * 100,
+                            4,
+                        )
+                        entry["date"] = intraday_date
+                        return True
+
+                    # Live overlay: yfinance daily index bars (notably NSE — Nifty/Sensex)
+                    # can lag by a full session, pinning the index to a stale prior close.
+                    # fast_info exposes the authoritative current last price + previous
+                    # close, so prefer it to reflect the live session.
+                    live_overlay_applied = False
+                    try:
+                        fast = yf.Ticker(symbol).fast_info
+                        try:
+                            live_last = fast["lastPrice"]
+                        except Exception:
+                            live_last = getattr(fast, "last_price", None)
+                        try:
+                            live_prev = fast["previousClose"]
+                        except Exception:
+                            live_prev = getattr(fast, "previous_close", None)
+                        if (
+                            live_last is not None and live_last == live_last
+                            and live_prev not in (None, 0) and live_prev == live_prev
+                        ):
+                            entry["close"] = float(live_last)
+                            entry["change_pct"] = round((live_last - live_prev) / live_prev * 100, 4)
+                            # Prefer the true session date from intraday; fall back to
+                            # the current trading day in the market's timezone.
+                            entry["date"] = (
+                                intraday_overlay.get("date") or _session_date_for_market(meta["market"])
+                                if intraday_overlay
+                                else _session_date_for_market(meta["market"])
+                            )
+                            live_overlay_applied = True
+                    except Exception as exc:
+                        logger.warning("fetch_indices: fast_info overlay failed for %s: %s", symbol, exc)
+
+                    if not live_overlay_applied:
+                        apply_intraday_overlay()
+
                     results[symbol] = entry
 
                     # Cache to price_history (T-03-04)
@@ -238,7 +379,7 @@ class DataFetcher:
 
     def fetch_holding_prices(self, tickers: list[str]) -> dict[str, float]:
         """
-        Fetch latest closing prices for portfolio holdings and cache to price_history.
+        Fetch latest prices for portfolio holdings and cache to price_history.
 
         Parameters
         ----------
@@ -249,16 +390,19 @@ class DataFetcher:
         Returns
         -------
         dict
-            Keyed by ticker, value is latest close price (float).
+            Keyed by ticker, value is latest available price (float).
             Tickers that fail silently are omitted from the result.
         """
         valid = [t for t in tickers if t]
         if not valid:
             return {}
 
-        # Batch download — period="5d" catches recent trading days across timezones
+        results: dict[str, float] = {}
+
+        # Daily batch preserves recent history for daily change and fallback prices.
+        daily_raw = None
         try:
-            raw = yf.download(
+            daily_raw = yf.download(
                 tickers=" ".join(valid),
                 period="5d",
                 interval="1d",
@@ -267,37 +411,71 @@ class DataFetcher:
             )
         except Exception as exc:
             logger.warning("fetch_holding_prices: yfinance.download raised: %s", exc)
-            return {}
-
-        if raw is None or raw.empty:
+        if daily_raw is None or daily_raw.empty:
             logger.warning("fetch_holding_prices: yfinance returned empty DataFrame")
-            return {}
 
-        results: dict[str, float] = {}
         conn = sqlite3.connect(self.db_path)
         try:
-            for ticker in valid:
+            if daily_raw is not None and not daily_raw.empty:
+                for ticker in valid:
+                    try:
+                        df_sym = self._extract_symbol_frame(daily_raw, ticker, valid)
+                        if df_sym is None:
+                            logger.warning("fetch_holding_prices: no Close data for %s", ticker)
+                            continue
+
+                        df_sym = df_sym.sort_index(ascending=True).dropna(subset=["Close"])
+                        if df_sym.empty:
+                            continue
+
+                        close = float(df_sym["Close"].iloc[-1])
+                        results[ticker] = close
+                        self._cache_index_to_db(conn, ticker, df_sym)
+
+                    except Exception as exc:
+                        logger.warning("fetch_holding_prices: failed for %s: %s", ticker, exc)
+                        continue
+
+            # Live-price overlay: replace today's close with the authoritative last
+            # price from fast_info. The intraday 1m series' last bar is the
+            # pre-auction tick (e.g. XETRA 17:29), which diverges from the official
+            # close set by the closing auction; fast_info.last_price reflects the
+            # auction and matches external sources. Dated to the current session so
+            # it overlays — not overwrites — the previous daily close used for
+            # day-change.
+            #
+            # Each fast_info read is a blocking network round-trip. Done serially
+            # this dominates refresh latency (~0.3s × N tickers → ~20s for a
+            # 70-holding portfolio), which is the bulk of the on-open wait. The
+            # reads are independent and I/O-bound, so fan them out across a thread
+            # pool; the per-ticker DB writes stay serial on this connection
+            # (sqlite3 connections are not safe to share across threads).
+            def _fetch_last_price(ticker: str):
                 try:
-                    # Handle single vs multi-ticker DataFrame layout
-                    if ("Close", ticker) in raw.columns:
-                        df_sym = raw.xs(ticker, axis=1, level=1)
-                    elif len(valid) == 1 and "Close" in raw.columns:
-                        df_sym = raw
-                    else:
-                        logger.warning("fetch_holding_prices: no Close data for %s", ticker)
-                        continue
-
-                    df_sym = df_sym.sort_index(ascending=True).dropna(subset=["Close"])
-                    if df_sym.empty:
-                        continue
-
-                    close = float(df_sym["Close"].iloc[-1])
-                    results[ticker] = close
-                    self._cache_index_to_db(conn, ticker, df_sym)
-
+                    fast = yf.Ticker(ticker).fast_info
+                    try:
+                        last_price = fast["lastPrice"]
+                    except Exception:
+                        last_price = getattr(fast, "last_price", None)
+                    if last_price is None or last_price != last_price:  # None or NaN
+                        return ticker, None
+                    close = float(last_price)
+                    if close <= 0:
+                        return ticker, None
+                    return ticker, close
                 except Exception as exc:
-                    logger.warning("fetch_holding_prices: failed for %s: %s", ticker, exc)
+                    logger.warning("fetch_holding_prices: fast_info failed for %s: %s", ticker, exc)
+                    return ticker, None
+
+            with ThreadPoolExecutor(max_workers=min(16, len(valid))) as pool:
+                live_prices = list(pool.map(_fetch_last_price, valid))
+
+            for ticker, close in live_prices:
+                if close is None:
                     continue
+                session_date = _current_session_date(ticker)
+                results[ticker] = close
+                self._cache_live_price_to_db(conn, ticker, session_date, close)
         finally:
             conn.commit()
             conn.close()
@@ -893,6 +1071,14 @@ class DataFetcher:
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _extract_symbol_frame(self, raw, symbol: str, symbols: list[str]):
+        """Return a single-symbol OHLCV DataFrame from yfinance's single or multi layout."""
+        if ("Close", symbol) in raw.columns:
+            return raw.xs(symbol, axis=1, level=1)
+        if len(symbols) == 1 and "Close" in raw.columns:
+            return raw
+        return None
+
     def _cache_index_to_db(self, conn: sqlite3.Connection, symbol: str, df) -> None:
         """Insert/replace price_history rows for *symbol* from *df*."""
         cursor = conn.cursor()
@@ -918,6 +1104,31 @@ class DataFetcher:
                 )
             except Exception as exc:
                 logger.warning("Failed to cache row for %s: %s", symbol, exc)
+
+    def _cache_live_price_to_db(self, conn: sqlite3.Connection, symbol: str, date_str: str, close: float) -> None:
+        """Overlay the live last price onto *symbol*'s current-session row.
+
+        Updates close/adj_close (and refreshes fetched_at) on an existing daily row
+        to preserve its real OHLC/volume; inserts a flat-OHLC row when none exists
+        yet (daily bar not published). Never disturbs the previous session's row.
+        """
+        try:
+            cur = conn.execute(
+                "UPDATE price_history SET close = ?, adj_close = ?, fetched_at = CURRENT_TIMESTAMP "
+                "WHERE ticker = ? AND date = ?",
+                (close, close, symbol, date_str),
+            )
+            if cur.rowcount == 0:
+                conn.execute(
+                    """
+                    INSERT INTO price_history
+                        (ticker, date, open, high, low, close, adj_close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (symbol, date_str, close, close, close, close, close, 0),
+                )
+        except Exception as exc:
+            logger.warning("Failed to cache live price for %s: %s", symbol, exc)
 
     def _cache_fx_to_db(
         self,

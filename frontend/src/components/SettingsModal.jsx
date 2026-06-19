@@ -146,28 +146,30 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
     fontSize: 14,
     fontWeight: 600,
     textTransform: 'uppercase',
-    color: '#6C757D',
+    color: 'var(--color-text-secondary)',
     margin: '20px 0 8px 0',
-    borderBottom: '1px solid #E0E0E0',
+    borderBottom: '1px solid var(--color-border)',
     paddingBottom: 4,
   };
 
   const descStyle = {
     fontSize: 14,
-    color: '#6C757D',
+    color: 'var(--color-text-secondary)',
     marginBottom: 12,
   };
 
   const inputStyle = (hasError) => ({
-    border: hasError ? '1px solid #DC3545' : '1px solid #E0E0E0',
+    border: hasError ? '1px solid var(--color-negative)' : '1px solid var(--color-border)',
     borderRadius: 4,
     padding: '6px 8px',
     fontSize: 14,
     width: 80,
+    background: 'var(--color-bg-card)',
+    color: 'var(--color-text-primary)',
   });
 
   const errorTextStyle = {
-    color: '#DC3545',
+    color: 'var(--color-negative)',
     fontSize: 12,
     marginTop: 2,
   };
@@ -192,14 +194,14 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
     >
       <div
         style={{
-          background: '#FFFFFF',
+          background: 'var(--color-bg-card)',
           borderRadius: 8,
           padding: 24,
           maxWidth: 500,
           width: '90%',
           maxHeight: '90vh',
           overflowY: 'auto',
-          border: '1px solid #E0E0E0',
+          border: '1px solid var(--color-border)',
           boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
         }}
       >
@@ -207,7 +209,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <h2
             id="alert-modal-title"
-            style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#212529' }}
+            style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}
           >
             Alert Configuration
           </h2>
@@ -219,7 +221,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
               border: 'none',
               cursor: 'pointer',
               fontSize: 20,
-              color: '#6C757D',
+              color: 'var(--color-text-secondary)',
               padding: '0 4px',
               lineHeight: 1,
             }}
@@ -235,7 +237,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
         </p>
 
         {holdingsList.length === 0 && (
-          <p style={{ color: '#6C757D', fontSize: 14 }}>No holdings loaded yet.</p>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>No holdings loaded yet.</p>
         )}
 
         {holdingsList.map((h) => {
@@ -244,7 +246,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
           return (
             <div key={ticker} style={{ marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 100, fontSize: 13, fontWeight: 600, color: '#212529', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ width: 100, fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {h.ticker || ticker}
                 </span>
                 <input
@@ -261,7 +263,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
                   min="0"
                   step="any"
                 />
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#212529' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--color-text-primary)' }}>
                   <input
                     type="checkbox"
                     checked={priceEnabled[ticker] !== false}
@@ -281,7 +283,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
           Alert fires when any holding moves more than this % in a day, up or down.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ fontSize: 14, color: '#212529' }}>Threshold:</label>
+          <label style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>Threshold:</label>
           <input
             type="number"
             value={dailyMovePct}
@@ -295,8 +297,8 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
             step="any"
             placeholder="5"
           />
-          <span style={{ fontSize: 14, color: '#212529' }}>%</span>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, color: '#212529' }}>
+          <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>%</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, color: 'var(--color-text-primary)' }}>
             <input
               type="checkbox"
               checked={dailyMoveEnabled}
@@ -312,7 +314,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
         <p style={descStyle}>
           Alert fires when RSI crosses 70 (overbought) or 30 (oversold). Applies to all holdings.
         </p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#212529' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--color-text-primary)' }}>
           <input
             type="checkbox"
             checked={rsiEnabled}
@@ -326,7 +328,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
         <p style={descStyle}>
           Alert fires when consensus rating changes (e.g., HOLD &rarr; BUY).
         </p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#212529' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--color-text-primary)' }}>
           <input
             type="checkbox"
             checked={analystEnabled}
@@ -366,7 +368,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
         {/* ---- Footer buttons ---- */}
         <div style={{
           marginTop: 24,
-          borderTop: '1px solid #E0E0E0',
+          borderTop: '1px solid var(--color-border)',
           paddingTop: 16,
           display: 'flex',
           justifyContent: 'flex-end',
@@ -379,12 +381,12 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
               fontWeight: 600,
               padding: '8px 16px',
               background: 'transparent',
-              border: '1px solid #E0E0E0',
+              border: '1px solid var(--color-border)',
               borderRadius: 4,
               cursor: 'pointer',
-              color: '#212529',
+              color: 'var(--color-text-primary)',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#F8F9FA'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-bg-card)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
             Cancel
@@ -399,7 +401,7 @@ export default function SettingsModal({ isOpen, onClose, holdings, initialSettin
               border: 'none',
               borderRadius: 4,
               cursor: 'pointer',
-              color: '#FFFFFF',
+              color: '#fff',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = '#0052A3'; }}
             onMouseLeave={e => { e.currentTarget.style.background = '#0066CC'; }}

@@ -11,6 +11,7 @@ Security note (T-04-03):
 import json
 import logging
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -23,6 +24,7 @@ from backend.core.alert_evaluator import evaluate_alerts
 logger = logging.getLogger(__name__)
 
 _IST = ZoneInfo("Asia/Kolkata")
+_ORCHESTRATION_LOCK = threading.RLock()
 
 
 class BriefingOrchestrator:
@@ -40,6 +42,11 @@ class BriefingOrchestrator:
         self.fetcher = DataFetcher(db_path)
 
     def generate(self) -> dict:
+        """Generate a briefing while serializing with other refresh/generate runs."""
+        with _ORCHESTRATION_LOCK:
+            return self._generate()
+
+    def _generate(self) -> dict:
         """
         Generate a new briefing by fetching all data sources and storing to DB.
 
@@ -296,6 +303,123 @@ class BriefingOrchestrator:
         except Exception as exc:
             logger.warning("BriefingOrchestrator: _load_yesterday_analyst failed: %s", exc)
             return {}
+
+    def refresh_prices_only(self) -> None:
+        """Refresh prices while serializing with other refresh/generate runs."""
+        with _ORCHESTRATION_LOCK:
+            return self._refresh_prices_only()
+
+    def _refresh_prices_only(self) -> None:
+        """
+        Fetch fresh prices/FX/indices and patch the latest briefing snapshot in-place.
+        Called on every app startup so the portfolio always shows current or last-close prices.
+        Does NOT regenerate news, analyst ratings, or AI narratives.
+        """
+        # Fetch FX rates
+        try:
+            fx_data = self.fetcher.fetch_fx_rate()
+            fx_rate_eurinr = fx_data.get("rate", 90.0)
+        except Exception as exc:
+            logger.warning("refresh_prices_only: FX (EURINR) fetch failed: %s", exc)
+            fx_data = {}
+            fx_rate_eurinr = 90.0
+
+        try:
+            usdinr_data = self.fetcher.fetch_fx_rate("USDINR=X")
+            fx_rate_usdinr = usdinr_data.get("rate", 83.0)
+        except Exception as exc:
+            logger.warning("refresh_prices_only: FX (USDINR) fetch failed: %s", exc)
+            fx_rate_usdinr = 83.0
+
+        # Fetch indices
+        try:
+            indices_data = self.fetcher.fetch_indices()
+        except Exception as exc:
+            logger.warning("refresh_prices_only: indices fetch failed: %s", exc)
+            indices_data = None
+
+        # Fetch fresh holding prices
+        try:
+            conn = sqlite3.connect(self.db_path)
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT ticker_yfinance FROM holdings WHERE ticker_yfinance IS NOT NULL"
+                ).fetchall()
+            finally:
+                conn.close()
+            holding_tickers = [r[0] for r in rows if r[0]]
+            if holding_tickers:
+                self.fetcher.fetch_holding_prices(holding_tickers)
+        except Exception as exc:
+            logger.warning("refresh_prices_only: holding price fetch failed: %s", exc)
+            holding_tickers = []
+
+        # Recompute portfolio P&L with fresh prices
+        try:
+            portfolio_data = get_portfolio_with_pl(
+                self.db_path,
+                fx_rate_eurinr=fx_rate_eurinr,
+                fx_rate_usdinr=fx_rate_usdinr,
+            )
+        except Exception as exc:
+            logger.warning("refresh_prices_only: portfolio P&L recompute failed: %s", exc)
+            portfolio_data = None
+
+        # Enrich holdings with daily_pct / day_change
+        if portfolio_data:
+            try:
+                for holding in portfolio_data.get("holdings", []):
+                    ticker = holding.get("ticker_yfinance") or holding.get("ticker")
+                    if not ticker:
+                        holding["daily_pct"] = None
+                        holding["day_change"] = None
+                        holding["day_change_pct"] = None
+                    else:
+                        pct = compute_daily_pct(self.db_path, ticker)
+                        holding["daily_pct"] = pct
+                        holding["day_change_pct"] = round(pct, 2) if pct is not None else None
+                        if pct is not None and holding.get("current_price") is not None:
+                            units = holding.get("quantity") or holding.get("units") or 0
+                            price_change = holding["current_price"] * pct / (100 + pct)
+                            holding["day_change"] = round(price_change * units, 2)
+                        else:
+                            holding["day_change"] = None
+            except Exception as exc:
+                logger.warning("refresh_prices_only: daily_pct enrichment failed: %s", exc)
+
+        # Patch the latest briefing snapshot
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT id, briefing_json FROM briefing_snapshots ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                snap_id, snap_json = row
+                try:
+                    briefing = json.loads(snap_json)
+                except Exception:
+                    briefing = {}
+                if portfolio_data is not None:
+                    briefing["portfolio"] = portfolio_data
+                if indices_data is not None:
+                    briefing["indices"] = indices_data
+                if fx_data:
+                    briefing["fx"] = fx_data
+                briefing["prices_refreshed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                conn.execute(
+                    "UPDATE briefing_snapshots SET briefing_json = ? WHERE id = ?",
+                    (json.dumps(briefing), snap_id),
+                )
+                conn.commit()
+                logger.info("refresh_prices_only: patched briefing snapshot id=%d", snap_id)
+            else:
+                # No existing snapshot — do a full generate instead
+                logger.info("refresh_prices_only: no snapshot found, running full generate")
+                self.generate()
+        except Exception as exc:
+            logger.warning("refresh_prices_only: failed to patch briefing snapshot: %s", exc)
+        finally:
+            conn.close()
 
     def get_latest(self) -> Optional[dict]:
         """

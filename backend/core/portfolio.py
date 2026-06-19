@@ -682,7 +682,7 @@ def get_portfolio_with_pl(
                     "pl": float, "pl_pct": float,
                     "pl_inr": float, "pl_usd": float,
                     "currency": str, "region": str|None, "asset_type": str|None,
-                    "broker": str, "price_date": str|None
+                    "broker": str, "price_date": str|None, "price_fetched_at": str|None
                 },
                 ...
             ],
@@ -711,6 +711,7 @@ def get_portfolio_with_pl(
                 h.asset_type,
                 p.close  AS current_price,
                 p.date   AS price_date,
+                p.fetched_at AS price_fetched_at,
                 prev_p.close AS prev_close
             FROM holdings h
             LEFT JOIN price_history p ON h.ticker_yfinance = p.ticker
@@ -768,6 +769,7 @@ def get_portfolio_with_pl(
                 "asset_type": row["asset_type"],
                 "broker": row["broker"],
                 "price_date": None,
+                "price_fetched_at": None,
             })
             continue
 
@@ -819,6 +821,7 @@ def get_portfolio_with_pl(
             "asset_type": row["asset_type"],
             "broker": row["broker"],
             "price_date": row["price_date"],
+            "price_fetched_at": row["price_fetched_at"],
         })
 
         # Accumulate totals — use market value (not P&L delta)

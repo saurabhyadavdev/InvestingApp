@@ -38,7 +38,7 @@ function MarketColumn({ label, stocks, loading }) {
                   <td style={{ ...styles.num, color: pos ? '#2A9D8F' : '#E63946', fontWeight: 600 }}>
                     {pos ? '+' : ''}{fmt(s.change_pct)}%
                   </td>
-                  <td style={{ ...styles.num, color: '#90A4AE' }}>{fmtVol(s.volume)}</td>
+                  <td style={{ ...styles.num, color: 'var(--color-text-secondary)' }}>{fmtVol(s.volume)}</td>
                 </tr>
               );
             })}
@@ -101,19 +101,19 @@ const styles = {
   wrapper: {
     margin: '0 32px 0',
     padding: '16px',
-    background: '#fff',
+    background: 'var(--color-bg-card)',
     borderRadius: 8,
-    border: '1px solid #E9ECEF',
+    border: '1px solid var(--color-border)',
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: 700,
-    color: '#212529',
+    color: 'var(--color-text-primary)',
     marginBottom: 12,
   },
   fetchTime: {
     fontWeight: 400,
-    color: '#90A4AE',
+    color: 'var(--color-text-secondary)',
     fontSize: 12,
   },
   grid: {
@@ -132,7 +132,7 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     marginBottom: 6,
-    borderBottom: '1px solid #E9ECEF',
+    borderBottom: '1px solid var(--color-border)',
     paddingBottom: 4,
   },
   table: {
@@ -142,29 +142,29 @@ const styles = {
   },
   th: {
     fontWeight: 600,
-    color: '#6C757D',
+    color: 'var(--color-text-secondary)',
     padding: '3px 4px',
     textAlign: 'left',
     borderBottom: '1px solid #F1F3F5',
   },
   row: {
-    borderBottom: '1px solid #F8F9FA',
+    borderBottom: '1px solid var(--color-border)',
   },
   ticker: {
     padding: '4px 4px',
     fontWeight: 600,
-    color: '#212529',
+    color: 'var(--color-text-primary)',
     fontFamily: 'monospace',
     fontSize: 12,
   },
   num: {
     padding: '4px 4px',
     textAlign: 'right',
-    color: '#495057',
+    color: 'var(--color-text-secondary)',
   },
   empty: {
     fontSize: 12,
-    color: '#90A4AE',
+    color: 'var(--color-text-secondary)',
     padding: '8px 0',
   },
   errorMsg: {

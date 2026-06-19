@@ -178,6 +178,7 @@ async def get_portfolio():
             asset_type=h.get("asset_type"),
             broker=h["broker"],
             price_date=h.get("price_date"),
+            price_fetched_at=h.get("price_fetched_at"),
         ))
 
     return PortfolioResponse(

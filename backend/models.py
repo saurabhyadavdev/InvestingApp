@@ -23,6 +23,7 @@ class HoldingResponse(BaseModel):
     asset_type: Optional[str] = None
     broker: str
     price_date: Optional[str] = None
+    price_fetched_at: Optional[str] = None
     rec: Optional[str] = None
     rsi_14: Optional[float] = None
     macd: Optional[float] = None

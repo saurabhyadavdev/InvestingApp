@@ -7,6 +7,8 @@ import sqlite3
 import pytest
 import sys
 import os
+import threading
+import time
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
@@ -59,6 +61,7 @@ def test_briefing_generate_creates_snapshot(db_path):
         MockDF.return_value.fetch_signals.return_value = {}
         MockDF.return_value.fetch_news.return_value = {"holdings": [], "india": [], "germany": [], "us": []}
         MockDF.return_value.fetch_analyst.return_value = {}
+        MockDF.return_value.fetch_benchmark.return_value = {}
         mock_portfolio.return_value = _mock_portfolio_result()
 
         orchestrator = BriefingOrchestrator(db_path)
@@ -167,6 +170,84 @@ def test_refresh_endpoint_triggers_generation(test_client):
     body = response.json()
     assert body.get("status") == "Briefing refreshed"
     assert "generated_at" in body
+
+
+def test_refresh_prices_only_serializes_concurrent_runs(db_path):
+    """Concurrent lightweight refreshes should not enter DataFetcher at the same time."""
+    from backend.core.briefing import BriefingOrchestrator
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO briefing_snapshots (date, type, briefing_json) VALUES (?, ?, ?)",
+        ("2026-05-13", "morning", json.dumps({"portfolio": {}, "indices": {}, "fx": {}})),
+    )
+    conn.commit()
+    conn.close()
+
+    entered = 0
+    entered_lock = threading.Lock()
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    errors = []
+
+    def fake_fetch_fx_rate(self, pair="EURINR=X"):
+        nonlocal entered
+        with entered_lock:
+            entered += 1
+            current = entered
+        if current == 1:
+            first_entered.set()
+            release_first.wait(timeout=2)
+        return {"pair": pair.replace("=X", ""), "rate": 90.0, "low": 89.0, "high": 91.0}
+
+    def run_refresh():
+        try:
+            BriefingOrchestrator(db_path).refresh_prices_only()
+        except Exception as exc:
+            errors.append(exc)
+
+    with patch("backend.core.briefing.DataFetcher.fetch_fx_rate", fake_fetch_fx_rate), \
+         patch("backend.core.briefing.DataFetcher.fetch_indices", return_value={}), \
+         patch("backend.core.briefing.DataFetcher.fetch_holding_prices", return_value={}), \
+         patch("backend.core.briefing.get_portfolio_with_pl", return_value={"holdings": []}):
+        first = threading.Thread(target=run_refresh)
+        second = threading.Thread(target=run_refresh)
+        first.start()
+        assert first_entered.wait(timeout=1), "first refresh did not enter fetch_fx_rate"
+
+        try:
+            second.start()
+            time.sleep(0.1)
+            with entered_lock:
+                observed_entered = entered
+        finally:
+            release_first.set()
+            first.join(timeout=2)
+            second.join(timeout=2)
+
+        assert observed_entered == 1
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert errors == []
+
+
+def test_stale_startup_snapshot_refreshes_prices_before_generate():
+    """A stale existing snapshot should get a lightweight market refresh before slow generation."""
+    from backend.main import _refresh_stale_snapshot_then_generate
+
+    calls = []
+
+    class FakeOrchestrator:
+        def refresh_prices_only(self):
+            calls.append("refresh")
+
+        def generate(self):
+            calls.append("generate")
+
+    _refresh_stale_snapshot_then_generate(FakeOrchestrator(), has_latest_snapshot=True)
+
+    assert calls == ["refresh", "generate"]
 
 
 # ---------------------------------------------------------------------------

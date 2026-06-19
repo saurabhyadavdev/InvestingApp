@@ -1,12 +1,14 @@
 """
 GET /api/stock/{ticker}/detail — on-demand stock detail endpoint.
+GET /api/stock/search?q=<query> — search stocks by name or ticker via yfinance.
 
 Returns live signals, analyst data, and structured AI narrative (three sections)
 for a given ticker. All fields are nullable — never returns 500 for missing data.
 """
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
+import yfinance as yf
 
 from backend.config import settings
 from backend.core.data_fetcher import DataFetcher
@@ -18,11 +20,52 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 
+@router.get("/stock/search")
+async def search_stocks(q: str = Query(..., min_length=1, max_length=100)) -> list[dict]:
+    """Return up to 12 matching stocks for a name/ticker query."""
+    try:
+        results = yf.Search(q, max_results=12).quotes
+        return [
+            {
+                "symbol": r.get("symbol", ""),
+                "name": r.get("shortname") or r.get("longname") or "",
+                "exchange": r.get("exchange") or r.get("fullExchangeName") or "",
+            }
+            for r in results
+            if r.get("symbol")
+        ]
+    except Exception as exc:
+        logger.warning("Stock search failed for %r: %s", q, exc)
+        return []
+
+
+def _fetch_price_data(ticker: str) -> dict:
+    """Fetch current price and daily change % for a single ticker via yfinance Ticker.history."""
+    try:
+        hist = yf.Ticker(ticker).history(period="5d")
+        if hist is None or hist.empty:
+            return {}
+        closes = hist["Close"].dropna()
+        if len(closes) < 1:
+            return {}
+        current_price = round(float(closes.iloc[-1]), 4)
+        day_change_pct = None
+        if len(closes) >= 2:
+            prev = float(closes.iloc[-2])
+            if prev > 0:
+                day_change_pct = round((current_price - prev) / prev * 100, 2)
+        return {"current_price": current_price, "day_change_pct": day_change_pct}
+    except Exception as exc:
+        logger.warning("_fetch_price_data failed for %s: %s", ticker, exc)
+        return {}
+
+
 @router.get("/stock/{ticker}/detail", response_model=StockDetailResponse)
 async def get_stock_detail(ticker: str) -> StockDetailResponse:
     fetcher = DataFetcher(settings.DB_PATH)
 
     signals = fetcher.fetch_signals([ticker]).get(ticker, {})
+    signals.update(_fetch_price_data(ticker))
     analyst = fetcher.fetch_analyst([ticker]).get(ticker, {})
 
     try:

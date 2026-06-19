@@ -28,6 +28,8 @@ import NewsCard from './components/NewsCard.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import WeatherWidget from './components/WeatherWidget.jsx';
 import TrendingStocksCard from './components/TrendingStocksCard.jsx';
+import WatchlistCard from './components/WatchlistCard.jsx';
+import BuyRecommendationsCard from './components/BuyRecommendationsCard.jsx';
 
 /**
  * Format a UTC ISO timestamp to "HH:MM IST, YYYY-MM-DD" for the footer.
@@ -109,9 +111,14 @@ const TABS = [
   { id: 'traders_place',  label: '🏦 Traders Place' },
 ];
 
-export default function Dashboard({ briefing, loading, onRefresh }) {
+export default function Dashboard({ briefing, loading, onRefresh, pricesRefreshing = false }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [refreshing, setRefreshing] = useState(false);
+
+  // Prices are mid-refresh whenever the on-open background fetch (App.jsx) or a
+  // manual/import-triggered refresh is in flight. Cards use this to hide stale
+  // daily-% until fresh data lands.
+  const pricesUpdating = pricesRefreshing || refreshing;
 
   // Alert settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -195,7 +202,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
             justifyContent: 'center',
             minHeight: '200px',
             fontSize: '14px',
-            color: '#6C757D',
+            color: 'var(--color-text-secondary)',
           }}
         >
           Loading briefing...
@@ -240,7 +247,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
     fx = {},
     generated_at,
     briefing_date,
-    fetched_at,
+    prices_refreshed_at,
   } = briefing;
 
   const holdings = portfolio.holdings || [];
@@ -258,16 +265,12 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
 
   const showRefresh = shouldShowRefresh(generated_at);
   const dateLabel = formatBriefingDate(briefing_date);
+  const priceUpdatedAt = prices_refreshed_at || generated_at;
 
   return (
     <div className="page" style={{ paddingBottom: '44px' }}>
       {/* Weather — always visible, independent fetch */}
       <WeatherWidget />
-
-      {/* Trending stocks — always visible, independent fetch */}
-      <div className="portfolio-section" style={{ marginTop: 0 }}>
-        <TrendingStocksCard />
-      </div>
 
       {/* Header */}
       <div
@@ -286,7 +289,7 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           {dateLabel && (
             <div
               className="header-subtitle"
-              style={{ fontSize: '14px', color: '#6C757D' }}
+              style={{ fontSize: '14px', color: 'var(--color-text-secondary)' }}
             >
               {dateLabel}
             </div>
@@ -379,7 +382,16 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
       {activeTab === 'overview' && (
         <>
           <div className="portfolio-section">
-            <HeatMapCard holdings={holdings} fxRate={fx?.rate ?? 90} />
+            <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
+              Market Indices
+            </div>
+            <IndicesCard indices={indicesArray} />
+          </div>
+          <div className="portfolio-section">
+            <HeatMapCard holdings={holdings} fxRate={fx?.rate ?? 90} refreshing={pricesUpdating} />
+          </div>
+          <div className="portfolio-section">
+            <WatchlistCard />
           </div>
           <div className="portfolio-section">
             <AllocationCard
@@ -389,10 +401,10 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
             />
           </div>
           <div className="portfolio-section">
-            <div className="section-title" style={{ fontSize: '20px', fontWeight: 600 }}>
-              Market Indices
-            </div>
-            <IndicesCard indices={indicesArray} />
+            <TrendingStocksCard />
+          </div>
+          <div className="portfolio-section">
+            <BuyRecommendationsCard />
           </div>
           <div className="portfolio-section">
             <BenchmarkCard benchmarkData={briefing?.benchmark_data} />
@@ -474,13 +486,13 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
             {tpHoldings.length === 0 ? (
               <div style={{ color: 'var(--color-text-secondary)', fontSize: '13px', padding: '12px 0' }}>
                 No Traders Place holdings. Import a quarterly PDF above.
-                <span style={{ marginLeft: 8, fontSize: '11px', color: '#6C757D' }}>
+                <span style={{ marginLeft: 8, fontSize: '11px', color: 'var(--color-text-secondary)' }}>
                   (P&amp;L shown vs. last quarterly statement price)
                 </span>
               </div>
             ) : (
               <>
-                <div style={{ fontSize: '11px', color: '#6C757D', marginBottom: 8 }}>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: 8 }}>
                   P&amp;L shown vs. quarter-end price from last imported statement
                 </div>
                 <PortfolioTable
@@ -505,11 +517,11 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
       <footer
         style={{
           padding: '16px 32px',
-          borderTop: '1px solid #E0E0E0',
+          borderTop: '1px solid var(--color-border)',
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
-          color: '#6C757D',
+          color: 'var(--color-text-secondary)',
           fontSize: '12px',
           marginTop: 24,
         }}
@@ -529,7 +541,9 @@ export default function Dashboard({ briefing, loading, onRefresh }) {
           <circle cx="12" cy="12" r="10" />
           <polyline points="12 6 12 12 16 14" />
         </svg>
-        Last updated: {formatIST(fetched_at || generated_at)}
+        {pricesUpdating
+          ? 'Updating prices…'
+          : `Prices refreshed: ${formatIST(priceUpdatedAt)}`}
       </footer>
       <ChatPanel briefing={briefing} />
 

@@ -32,3 +32,18 @@ async def refresh_briefing() -> dict:
         "status": "Briefing refreshed",
         "generated_at": result["generated_at"],
     }
+
+
+@router.post("/refresh-prices")
+async def refresh_prices() -> dict:
+    """
+    Lightweight refresh: re-fetch indices, FX, and holding prices, then patch the
+    latest briefing snapshot in place. Does NOT regenerate news / analyst / AI synthesis.
+
+    Called on every app open so market data always reflects the current or last close.
+    Runs in a thread pool — refresh_prices_only() is synchronous yfinance I/O.
+    """
+    orchestrator = BriefingOrchestrator(settings.DB_PATH)
+    await asyncio.to_thread(orchestrator.refresh_prices_only)
+
+    return {"status": "Prices refreshed"}

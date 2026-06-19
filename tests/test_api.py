@@ -342,6 +342,40 @@ def test_indices_sp500(db_path):
     assert isinstance(entry["market_label"], str)
 
 
+def test_indices_use_intraday_session_when_fast_info_fails(db_path):
+    """If fast_info fails, current intraday data should still advance stale daily index dates."""
+    from backend.core.data_fetcher import DataFetcher
+
+    daily_df = _make_mock_indices_download()
+    daily_df.index = pd.date_range("2026-05-11", periods=2, freq="D", tz="UTC")
+    intraday_dates = pd.date_range("2026-05-13 09:15", periods=2, freq="5min", tz="UTC")
+    intraday_df = pd.DataFrame(
+        {
+            ("Open", "^BSESN"): [2020.0, 2024.0],
+            ("High", "^BSESN"): [2026.0, 2028.0],
+            ("Low", "^BSESN"): [2018.0, 2021.0],
+            ("Close", "^BSESN"): [2023.0, 2025.0],
+            ("Volume", "^BSESN"): [1000, 1100],
+        },
+        index=intraday_dates,
+    )
+
+    class FastInfoFailure:
+        @property
+        def fast_info(self):
+            raise KeyError("exchangeTimezoneName")
+
+    with patch("yfinance.download", side_effect=[daily_df, intraday_df]), \
+         patch("yfinance.Ticker", return_value=FastInfoFailure()):
+        fetcher = DataFetcher(db_path)
+        result = fetcher.fetch_indices()
+
+    assert result["^BSESN"]["date"] == "2026-05-13"
+    assert result["^BSESN"]["close"] == 2025.0
+    expected_change = (2025.0 - 2015.0) / 2015.0 * 100
+    assert result["^BSESN"]["change_pct"] == round(expected_change, 4)
+
+
 def test_fx_rate_endpoint(db_path):
     """DataFetcher.fetch_fx_rate() returns dict with rate, low, high, pair, timestamp."""
     from backend.core.data_fetcher import DataFetcher

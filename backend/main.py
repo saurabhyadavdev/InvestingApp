@@ -31,11 +31,22 @@ from backend.api.chat import router as chat_router
 from backend.api.alerts import router as alerts_router
 from backend.api.trending import router as trending_router
 from backend.api.stock import router as stock_router
+from backend.api.recommendations import router as recommendations_router
 from backend.scheduler import init_scheduler
 from backend.core.briefing import BriefingOrchestrator
 from backend.core.portfolio import resolve_tr_yfinance_tickers
 
 logger = logging.getLogger(__name__)
+
+
+def _refresh_stale_snapshot_then_generate(orchestrator: BriefingOrchestrator, has_latest_snapshot: bool) -> dict:
+    """Patch an existing stale snapshot with fresh prices before slow full generation."""
+    if has_latest_snapshot:
+        try:
+            orchestrator.refresh_prices_only()
+        except Exception as exc:
+            logger.warning("Startup price refresh before full generation failed (non-fatal): %s", exc)
+    return orchestrator.generate()
 
 
 @asynccontextmanager
@@ -80,13 +91,16 @@ async def lifespan(app: FastAPI):
             # No briefing for today yet — generate immediately in background
             def _startup_generate():
                 try:
-                    orchestrator.generate()
+                    _refresh_stale_snapshot_then_generate(
+                        orchestrator,
+                        has_latest_snapshot=latest is not None,
+                    )
                     logger.info("Startup full briefing generation completed")
                 except Exception as exc:
                     logger.warning("Startup briefing generation failed (non-fatal): %s", exc)
 
             threading.Thread(target=_startup_generate, daemon=True).start()
-            logger.info("No briefing for today — generating in background now")
+            logger.info("No briefing for today — refreshing stale prices, then generating in background")
         else:
             # Today's briefing exists — just refresh prices
             def _startup_refresh():
@@ -132,6 +146,7 @@ app.include_router(chat_router)
 app.include_router(alerts_router)
 app.include_router(trending_router)
 app.include_router(stock_router)
+app.include_router(recommendations_router)
 
 
 if __name__ == "__main__":

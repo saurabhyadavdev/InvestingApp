@@ -1,20 +1,17 @@
 """
-POST /api/chat — stateless chat endpoint backed by Claude Haiku 4.5.
+POST /api/chat — stateless chat endpoint backed by Groq (llama-3.3-70b, free tier).
 
-Security notes (T-02-12, T-02-13, T-02-15):
+Security notes:
   - Anti-hallucination system prompt: "Answer using ONLY the data in the briefing below."
-  - User message goes in the `messages` array (user role), NOT in the system prompt.
-  - compact_briefing strips raw news article bodies and API keys to keep system prompt
-    under ~4000 tokens (T-02-15 max_tokens=512 mitigation).
-  - ANTHROPIC_API_KEY never appears in briefing JSON or API responses.
+  - compact_briefing strips raw news article bodies to keep prompt under ~4000 tokens.
+  - GROQ_API_KEY never appears in briefing JSON or API responses.
   - Returns ChatResponse on all error paths — never raises HTTP 500.
 """
 import json
 import logging
 
 from fastapi import APIRouter
-
-import anthropic
+from groq import Groq
 
 from backend.models import ChatRequest, ChatResponse
 from backend.config import settings
@@ -25,28 +22,23 @@ router = APIRouter(prefix="/api")
 
 @router.post("/chat", response_model=ChatResponse)
 async def post_chat(req: ChatRequest) -> ChatResponse:
-    """
-    Answer a user question about today's briefing using Claude Haiku 4.5.
-
-    The briefing is injected as a compact system-prompt context (holdings summary,
-    indices closes, FX rate only — news article bodies excluded to stay within token budget).
-
-    Returns ChatResponse on all paths; never raises HTTP 500.
-    """
-    if not settings.ANTHROPIC_API_KEY:
-        return ChatResponse(response="Chat unavailable — set ANTHROPIC_API_KEY in .env")
+    if not settings.GROQ_API_KEY:
+        return ChatResponse(response="Chat unavailable — set GROQ_API_KEY in .env")
 
     try:
-        # Build compact briefing — exclude raw news bodies to stay within ~4000 token budget
-        # (T-02-15 mitigation). Include only: holding summary, indices, fx rate + timestamp.
         compact_briefing = {
             "holdings": [
                 {
                     "ticker": h.get("ticker"),
+                    "name": h.get("name"),
                     "rec": h.get("rec"),
                     "rsi_14": h.get("rsi_14"),
                     "ai_narrative": h.get("ai_narrative"),
                     "pl_pct": h.get("pl_pct"),
+                    "day_change_pct": h.get("day_change_pct"),
+                    "current_price": h.get("current_price"),
+                    "analyst_rating": h.get("analyst_rating"),
+                    "analyst_target": h.get("analyst_target"),
                 }
                 for h in req.briefing.get("portfolio", {}).get("holdings", [])
             ],
@@ -56,25 +48,41 @@ async def post_chat(req: ChatRequest) -> ChatResponse:
                 for k, v in req.briefing.get("fx", {}).items()
                 if k in ("rate", "timestamp")
             },
+            # News headlines (title + source only — no full bodies to stay under token limit)
+            "news": {
+                tab: [
+                    {
+                        "title": a.get("title"),
+                        "source": a.get("source"),
+                        "publishedAt": a.get("publishedAt"),
+                    }
+                    for a in (articles[:6] if isinstance(articles, list) else [])
+                ]
+                for tab, articles in req.briefing.get("news", {}).items()
+            },
         }
 
-        # Anti-hallucination system prompt (D-08, T-02-12 mitigation)
         system_prompt = (
-            "You are a personal investing analyst assistant. Answer the user's question using ONLY "
-            "the data in the briefing below. Do not invent facts, prices, or recommendations not "
-            "present in the data. If something is not in the data, say "
-            "'I don't have that information in today's briefing'.\n\n"
+            "You are a personal investing analyst assistant. Use the user's portfolio briefing "
+            "data below as your primary context, but you may also draw on your general financial "
+            "knowledge to answer questions about market events, stock movements, economic factors, "
+            "and investment concepts. When the briefing contains relevant data (prices, signals, "
+            "analyst ratings, news headlines), reference it specifically. For questions about "
+            "broader market context or reasons behind price movements, use your knowledge to "
+            "provide helpful analysis.\n\n"
             "Today's briefing data:\n" + json.dumps(compact_briefing, default=str)
         )
 
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model="claude-haiku-4-5",
+        client = Groq(api_key=settings.GROQ_API_KEY)
+        message = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": req.message},
+            ],
             max_tokens=512,
-            system=system_prompt,
-            messages=[{"role": "user", "content": req.message}],
         )
-        return ChatResponse(response=message.content[0].text)
+        return ChatResponse(response=message.choices[0].message.content)
 
     except Exception as exc:
         logger.error("POST /api/chat failed: %s", exc)

@@ -150,7 +150,6 @@ export default function BenchmarkCard({ benchmarkData }) {
   }
 
   const {
-    windows = WINDOWS,
     portfolio = {},
     indices = {},
     regional = {},
@@ -188,7 +187,7 @@ export default function BenchmarkCard({ benchmarkData }) {
 
       {/* Period switcher */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {windows.map((period) => {
+        {WINDOWS.map((period) => {
           const isActive = period === activePeriod;
           return (
             <button

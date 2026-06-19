@@ -2,19 +2,19 @@
 
 :root {
   /* Brand colors */
-  --color-accent: #0066CC;
-  --color-positive: #28A745;
-  --color-negative: #DC3545;
-  --color-neutral: #6C757D;
-  --color-border: #E0E0E0;
-  --color-bg-card: #F8F9FA;
+  --color-accent: #4D9EFF;
+  --color-positive: #4ADE80;
+  --color-negative: #F87171;
+  --color-neutral: #94A3B8;
+  --color-border: #2A2D3E;
+  --color-bg-card: #1A1D2E;
 
   /* Text */
-  --color-text-primary: #212529;
-  --color-text-secondary: #6C757D;
+  --color-text-primary: #E2E8F0;
+  --color-text-secondary: #94A3B8;
 
   /* Layout */
-  --color-bg-page: #FFFFFF;
+  --color-bg-page: #0F1117;
 }
 
 /* Reset and base */
@@ -156,7 +156,7 @@ h2 {
 .error {
   color: var(--color-negative);
   padding: 16px;
-  background: #fff5f5;
+  background: #2D1515;
   border: 1px solid var(--color-negative);
   border-radius: 4px;
   margin-bottom: 16px;

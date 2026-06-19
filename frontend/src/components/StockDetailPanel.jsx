@@ -4,7 +4,7 @@ import { fetchStockDetail } from '../api.js';
 const REC_STYLES = {
   BUY:  { background: '#28A745', color: '#fff' },
   SELL: { background: '#DC3545', color: '#fff' },
-  HOLD: { background: '#6C757D', color: '#fff' },
+  HOLD: { background: 'var(--color-text-secondary)', color: '#fff' },
 };
 
 /**
@@ -70,7 +70,7 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
       }
       if (!signalsData) {
         return (
-          <p style={{ fontSize: 14, color: '#6C757D', padding: '16px 0' }}>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', padding: '16px 0' }}>
             Signal data unavailable for this holding.
           </p>
         );
@@ -91,9 +91,9 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
           <div style={{ marginBottom: 8 }}>
             <span style={{ fontWeight: 600 }}>MACD:</span>{' '}
             {signalsData.macd != null ? signalsData.macd.toFixed(2) : '—'}
-            <span style={{ color: '#6C757D' }}> / Signal: </span>
+            <span style={{ color: 'var(--color-text-secondary)' }}> / Signal: </span>
             {signalsData.macd_signal != null ? signalsData.macd_signal.toFixed(2) : '—'}
-            <span style={{ color: '#6C757D' }}> / Hist: </span>
+            <span style={{ color: 'var(--color-text-secondary)' }}> / Hist: </span>
             {signalsData.macd_histogram != null ? signalsData.macd_histogram.toFixed(2) : '—'}
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -101,7 +101,7 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
             {signalsData.sma_50 != null
               ? <>{currencySymbol}{signalsData.sma_50.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
               : '—'}
-            <span style={{ color: '#6C757D' }}> · </span>
+            <span style={{ color: 'var(--color-text-secondary)' }}> · </span>
             <span style={{ fontWeight: 600 }}>SMA200:</span>{' '}
             {signalsData.sma_200 != null
               ? <>{currencySymbol}{signalsData.sma_200.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
@@ -121,12 +121,12 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
       }
       if (!analystData || analystData.rating == null || analystData.rating === 'No coverage') {
         return (
-          <p style={{ fontSize: 14, color: '#6C757D', padding: '16px 0' }}>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', padding: '16px 0' }}>
             No analyst coverage.
           </p>
         );
       }
-      const recStyle = REC_STYLES[analystData.rating] || { background: '#6C757D', color: '#fff' };
+      const recStyle = REC_STYLES[analystData.rating] || { background: 'var(--color-text-secondary)', color: '#fff' };
       return (
         <div>
           <div style={{ marginBottom: 8 }}>
@@ -140,7 +140,7 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
               {analystData.rating}
             </span>
             {analystData.num_analysts != null && (
-              <span style={{ color: '#6C757D', marginLeft: 8 }}>
+              <span style={{ color: 'var(--color-text-secondary)', marginLeft: 8 }}>
                 ({analystData.num_analysts} analysts)
               </span>
             )}
@@ -160,13 +160,13 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 0' }}>
             <div className="typing-dots"><span>•</span><span>•</span><span>•</span></div>
-            <p style={{ fontSize: 14, color: '#6C757D', marginTop: 8 }}>Generating analysis...</p>
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginTop: 8 }}>Generating analysis...</p>
           </div>
         );
       }
       if (!aiData) {
         return (
-          <p style={{ fontSize: 14, color: '#6C757D', padding: '24px 0', textAlign: 'center' }}>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', padding: '24px 0', textAlign: 'center' }}>
             AI analysis unavailable.
           </p>
         );
@@ -180,13 +180,13 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
         <div>
           {sections.map((section, idx) => (
             <div key={section.heading} style={{ marginTop: idx === 0 ? 0 : 24 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#212529', marginBottom: 8, marginTop: 0 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 8, marginTop: 0 }}>
                 {section.heading}
               </h3>
               <p style={{
                 fontSize: 14,
                 fontWeight: 400,
-                color: section.body ? '#212529' : '#6C757D',
+                color: section.body ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                 lineHeight: 1.5,
                 margin: 0,
               }}>
@@ -208,7 +208,7 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
   }
 
   return (
-    <div style={{ background: '#F8F9FA', padding: '16px 24px', borderTop: '1px solid #E0E0E0' }}>
+    <div style={{ background: 'var(--color-bg-card)', padding: '16px 24px', borderTop: '1px solid #E0E0E0' }}>
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid #E0E0E0', marginBottom: 16 }}>
         {tabs.map(tab => {
@@ -226,7 +226,7 @@ export default function StockDetailPanel({ ticker, currencySymbol }) {
                 cursor: 'pointer',
                 fontSize: 14,
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#212529' : '#6C757D',
+                color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
               }}
             >
               {tab.label}

@@ -6,13 +6,16 @@
  * Dashboard receives all sections from the briefing response.
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchBriefing } from './api.js';
+import { fetchBriefing, refreshPrices } from './api.js';
 import Dashboard from './Dashboard.jsx';
 import './index.css';
 
 export default function App() {
   const [briefing, setBriefing] = useState(null);
   const [loading, setLoading] = useState(true);
+  // True while the on-open background price refresh is in flight. Drives the
+  // "Updating prices…" UI so the user never reads stale daily-% as current.
+  const [pricesRefreshing, setPricesRefreshing] = useState(false);
 
   const loadBriefing = useCallback(() => {
     setLoading(true);
@@ -27,15 +30,34 @@ export default function App() {
       });
   }, []);
 
+  // Reload the snapshot WITHOUT flipping the full-page loading state — used for
+  // the in-place update after a background price refresh lands.
+  const reloadSilently = useCallback(() => {
+    return fetchBriefing()
+      .then((data) => setBriefing(data))
+      .catch(() => {});
+  }, []);
+
+  // On open: show the cached snapshot immediately, then pull fresh market data
+  // (indices, FX, holding prices) in the background and update in place once it
+  // lands (~20s of yfinance I/O). Refresh failures are non-fatal — the cached
+  // snapshot stays on screen.
   useEffect(() => {
-    loadBriefing();
-  }, [loadBriefing]);
+    loadBriefing().finally(() => {
+      setPricesRefreshing(true);
+      refreshPrices()
+        .then(reloadSilently)
+        .catch(() => {})
+        .finally(() => setPricesRefreshing(false));
+    });
+  }, [loadBriefing, reloadSilently]);
 
   return (
     <Dashboard
       briefing={briefing}
       loading={loading}
       onRefresh={loadBriefing}
+      pricesRefreshing={pricesRefreshing}
     />
   );
 }

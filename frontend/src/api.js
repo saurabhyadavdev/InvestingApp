@@ -5,7 +5,7 @@
 
 /**
  * fetchBriefing — GET /api/briefing to retrieve the latest cached briefing.
- * @returns {Promise<{portfolio, indices, fx, generated_at, briefing_date, fetched_at}>}
+ * @returns {Promise<{portfolio, indices, fx, generated_at, briefing_date, prices_refreshed_at, fetched_at}>}
  */
 export async function fetchBriefing() {
   const response = await fetch('/api/briefing');
@@ -26,6 +26,22 @@ export async function triggerRefresh() {
   });
   if (!response.ok) {
     throw new Error(`Refresh failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * refreshPrices — POST /api/refresh-prices to re-fetch indices, FX, and holding
+ * prices and patch the latest snapshot in place. Lightweight; no news/analyst/AI.
+ * @returns {Promise<{status: string}>}
+ */
+export async function refreshPrices() {
+  const response = await fetch('/api/refresh-prices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`Price refresh failed: ${response.status} ${response.statusText}`);
   }
   return response.json();
 }
@@ -157,6 +173,22 @@ export async function importCSV(broker, file) {
     throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
   }
 
+  return response.json();
+}
+
+export async function searchStocks(query) {
+  const response = await fetch(`/api/stock/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) {
+    throw new Error(`Stock search failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchRecommendations() {
+  const response = await fetch('/api/recommendations');
+  if (!response.ok) {
+    throw new Error(`Recommendations fetch failed: ${response.status}`);
+  }
   return response.json();
 }
 

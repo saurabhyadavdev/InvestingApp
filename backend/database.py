@@ -17,13 +17,13 @@ def create_schema(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Holdings: imported from CSV, canonical by ISIN
+    # Holdings: imported from CSV, unique per (broker, isin)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS holdings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             broker TEXT NOT NULL,
             ticker_local TEXT NOT NULL,
-            isin TEXT UNIQUE,
+            isin TEXT,
             ticker_yfinance TEXT,
             name TEXT,
             units REAL NOT NULL,
@@ -31,7 +31,8 @@ def create_schema(db_path: str) -> None:
             currency TEXT NOT NULL,
             region TEXT,
             asset_type TEXT,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(broker, isin)
         )
     """)
 
@@ -146,3 +147,53 @@ def create_schema(db_path: str) -> None:
 
     conn.commit()
     conn.close()
+
+
+def migrate_schema(db_path: str) -> None:
+    """
+    Run one-time schema migrations for existing databases.
+
+    Migration 1: replace standalone `isin TEXT UNIQUE` with `UNIQUE(broker, isin)`
+    so the same ISIN can exist across different brokers (e.g. Delivery Hero in both
+    Trade Republic and Traders Place).
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='holdings'"
+        ).fetchone()
+        if not row:
+            return  # table doesn't exist yet — create_schema will handle it
+
+        schema_sql = row[0] or ""
+        if "isin TEXT UNIQUE" not in schema_sql:
+            return  # already migrated or different schema
+
+        # Recreate holdings with UNIQUE(broker, isin) instead of isin TEXT UNIQUE
+        conn.executescript("""
+            BEGIN;
+            CREATE TABLE holdings_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                broker TEXT NOT NULL,
+                ticker_local TEXT NOT NULL,
+                isin TEXT,
+                ticker_yfinance TEXT,
+                name TEXT,
+                units REAL NOT NULL,
+                cost_per_unit REAL NOT NULL,
+                currency TEXT NOT NULL,
+                region TEXT,
+                asset_type TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(broker, isin)
+            );
+            INSERT OR IGNORE INTO holdings_new
+                SELECT id, broker, ticker_local, isin, ticker_yfinance, name,
+                       units, cost_per_unit, currency, region, asset_type, updated_at
+                FROM holdings;
+            DROP TABLE holdings;
+            ALTER TABLE holdings_new RENAME TO holdings;
+            COMMIT;
+        """)
+    finally:
+        conn.close()

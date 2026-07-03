@@ -1,51 +1,84 @@
-# InvestIQ
+# InvestIQ: Personal Cross-Border Investing Intelligence
 
-Personal cross-border investing intelligence assistant for investors with holdings in India (Zerodha) and Germany (Trade Republic). Delivers a structured daily briefing every morning covering portfolio status, market indices, FX rates, and actionable buy/sell/hold guidance.
+**A daily briefing assistant for investors with holdings in India (Zerodha) and Germany (Trade Republic). Delivers structured portfolio insights, market indices, FX rates, and actionable buy/sell/hold guidance every morning.**
 
-## Overview
+---
 
-- Morning briefing at 07:00 IST covering Nifty/Sensex, DAX, and S&P 500
-- Unified portfolio view across Zerodha (India) and Trade Republic (Germany)
-- EUR/INR exchange rate monitor for fund transfer timing
-- Technical signals (RSI, MACD, Bollinger Bands) + analyst consensus
-- Local web app — portfolio data stays on your machine
+## What is InvestIQ?
 
-## Installation
+**InvestIQ** is an open-source, local-first intelligence assistant that monitors your cross-border portfolio across Indian (Zerodha) and German (Trade Republic) brokers. It fetches daily OHLCV data, computes technical indicators (RSI, MACD, Bollinger Bands), aggregates news and analyst consensus, and synthesizes everything into a structured morning briefing — all running locally on your machine.
+
+---
+
+## Core Features
+
+- **Automated Morning Briefing**: Daily briefing at 07:00 IST covering Nifty/Sensex, DAX, S&P 500, portfolio P&L, and recommended actions
+- **Unified Portfolio View**: Holdings from Zerodha (India) and Trade Republic (Germany) in a single dashboard
+- **EUR/INR FX Monitor**: Real-time exchange rate tracking for fund transfer timing decisions
+- **Technical Signals + Analyst Consensus**: RSI, MACD, Bollinger Bands combined with Finnhub analyst ratings and price targets
+- **AI-Powered Synthesis**: Claude API interprets technical + fundamental data into clear buy/sell/hold guidance
+- **Local-First Privacy**: SQLite database stays on your machine — no portfolio data sent to third parties beyond public price lookups
+
+---
+
+## Getting Started
+
+### Local Development
+
+**1. Start the Backend (FastAPI):**
 
 ```bash
-# Backend (Python)
+# Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
 pip install -r backend/requirements.txt
 
-# Copy environment template and fill in API keys
+# Configure your environment
 cp .env.example .env
 
-# Frontend (Node.js)
-cd frontend
-npm install
-cd ..
+# Run the development server
+uvicorn backend.main:app --reload --port 8000
 ```
 
-## Running
+The backend will be available at `http://localhost:8000`.
+
+**2. Start the Frontend (Vue.js):**
 
 ```bash
-# Backend (in project root)
-uvicorn backend.main:app --reload --port 8000
-
-# Frontend (in a separate terminal)
+# In a new terminal, navigate to the frontend directory
 cd frontend
+npm install
 npm run dev  # → http://localhost:3000
 ```
 
-## Data Storage
+### Data Storage
 
 SQLite database at `data/app.db` — created automatically on first startup. The `data/` directory is gitignored; your portfolio holdings stay local.
 
-For best security, store the project in an encrypted volume (FileVault on macOS, BitLocker on Windows).
+---
 
 ## Testing
 
 ```bash
 pytest tests/ -v
 ```
+
+---
+
+## License
+
+This project is licensed under the MIT License.
+
+---
+
+## Contributing & Issues
+
+Contributions, issues, and feature requests are welcome! Please check the issues page for ongoing work.
+
+---
+
+## Author
+
+Created by **Saurabh Yadav**

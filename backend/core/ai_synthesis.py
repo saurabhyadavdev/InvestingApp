@@ -8,6 +8,7 @@ Derives per-holding BUY/HOLD/SELL recommendations using a two-stage approach:
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from groq import Groq
 
@@ -179,17 +180,20 @@ def synthesise_holdings(portfolio_data: dict, signals_data: dict, analyst_data: 
             "Consider deployment if market conditions are favourable."
         )
 
+    # Enrich all holdings with analyst data (fast, no I/O)
     for h in holdings:
         yf_ticker = h.get("ticker_yfinance")
         signals = signals_data.get(yf_ticker, {}) if yf_ticker else {}
         analyst = analyst_data.get(yf_ticker, {}) if yf_ticker else {}
-
         h["analyst_rating"] = analyst.get("rating")
         h["analyst_target"] = analyst.get("target_mean")
         h["analyst_num"] = analyst.get("num_analysts")
 
-        # Only call AI when we have real signal data — avoids burning rate limit on tickers
-        # with no OHLCV history (returns null signals from fetch_signals)
+    # Parallelize Groq API calls across holdings — each is ~0.5-2s independent I/O
+    def _synth_one(h):
+        yf_ticker = h.get("ticker_yfinance")
+        signals = signals_data.get(yf_ticker, {}) if yf_ticker else {}
+        analyst = analyst_data.get(yf_ticker, {}) if yf_ticker else {}
         has_signals = signals.get("rsi_14") is not None
         if has_signals:
             rec, narrative = synthesise_holding(client, h["ticker"], h.get("pl_pct", 0), signals, analyst, cash_context)
@@ -198,5 +202,9 @@ def synthesise_holdings(portfolio_data: dict, signals_data: dict, analyst_data: 
             narrative = "Insufficient price history for AI analysis."
         h["rec"] = rec
         h["ai_narrative"] = narrative
+
+    to_parallel = [h for h in holdings]
+    with ThreadPoolExecutor(max_workers=min(10, len(to_parallel))) as pool:
+        list(pool.map(_synth_one, to_parallel))
 
     return holdings

@@ -55,6 +55,48 @@ def compute_daily_pct(db_path: str, ticker: str) -> Optional[float]:
         conn.close()
 
 
+def batch_compute_daily_pct(db_path: str, tickers: list[str]) -> dict[str, Optional[float]]:
+    """
+    Compute daily % change for many tickers in one DB round-trip.
+
+    Returns a dict keyed by ticker; missing or insufficient history → None.
+    """
+    valid = list(dict.fromkeys(t for t in tickers if t))
+    if not valid:
+        return {}
+
+    conn = sqlite3.connect(db_path)
+    try:
+        placeholders = ",".join("?" * len(valid))
+        rows = conn.execute(
+            f"""
+            SELECT ticker, close FROM price_history
+            WHERE ticker IN ({placeholders})
+            ORDER BY ticker, date DESC
+            """,
+            valid,
+        ).fetchall()
+    except Exception:
+        return {t: None for t in valid}
+    finally:
+        conn.close()
+
+    closes_by_ticker: dict[str, list[float]] = {}
+    for ticker, close in rows:
+        bucket = closes_by_ticker.setdefault(ticker, [])
+        if len(bucket) < 2:
+            bucket.append(close)
+
+    result: dict[str, Optional[float]] = {}
+    for ticker in valid:
+        closes = closes_by_ticker.get(ticker, [])
+        if len(closes) == 2 and closes[1] and closes[1] != 0:
+            result[ticker] = (closes[0] - closes[1]) / closes[1] * 100
+        else:
+            result[ticker] = None
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

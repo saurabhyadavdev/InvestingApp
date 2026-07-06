@@ -12,12 +12,13 @@ import json
 import logging
 import sqlite3
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Callable, Optional
 from zoneinfo import ZoneInfo
 
 from backend.core.data_fetcher import DataFetcher
-from backend.core.portfolio import compute_daily_pct, get_portfolio_with_pl
+from backend.core.portfolio import batch_compute_daily_pct, get_portfolio_with_pl
 from backend.core.ai_synthesis import synthesise_holdings
 from backend.core.alert_evaluator import evaluate_alerts
 
@@ -25,6 +26,60 @@ logger = logging.getLogger(__name__)
 
 _IST = ZoneInfo("Asia/Kolkata")
 _ORCHESTRATION_LOCK = threading.RLock()
+
+
+def _run_parallel(tasks: dict[str, Callable], max_workers: int = 4) -> dict[str, object]:
+    """Run independent I/O-bound callables in parallel; failures become None."""
+    if not tasks:
+        return {}
+    workers = min(max_workers, len(tasks))
+    results: dict[str, object] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        future_map = {pool.submit(fn): key for key, fn in tasks.items()}
+        for future in as_completed(future_map):
+            key = future_map[future]
+            try:
+                results[key] = future.result()
+            except Exception as exc:
+                logger.warning("BriefingOrchestrator: parallel task %s failed: %s", key, exc)
+                results[key] = None
+    return results
+
+
+def _load_holding_tickers(db_path: str) -> list[str]:
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT ticker_yfinance FROM holdings WHERE ticker_yfinance IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [r[0] for r in rows if r[0]]
+
+
+def _enrich_holdings_daily_pct(db_path: str, portfolio_data: dict) -> None:
+    """Attach daily_pct / day_change / day_change_pct to each holding in-place."""
+    holdings = portfolio_data.get("holdings", [])
+    tickers = [
+        h.get("ticker_yfinance") or h.get("ticker")
+        for h in holdings
+    ]
+    pct_map = batch_compute_daily_pct(db_path, tickers)
+    for holding, ticker in zip(holdings, tickers):
+        if not ticker:
+            holding["daily_pct"] = None
+            holding["day_change"] = None
+            holding["day_change_pct"] = None
+            continue
+        pct = pct_map.get(ticker)
+        holding["daily_pct"] = pct
+        holding["day_change_pct"] = round(pct, 2) if pct is not None else None
+        if pct is not None and holding.get("current_price") is not None:
+            units = holding.get("quantity") or holding.get("units") or 0
+            price_change = holding["current_price"] * pct / (100 + pct)
+            holding["day_change"] = round(price_change * units, 2)
+        else:
+            holding["day_change"] = None
 
 
 class BriefingOrchestrator:
@@ -65,44 +120,31 @@ class BriefingOrchestrator:
         Exceptions in individual sections are caught and logged — partial data
         is better than no briefing (fail-open per T-04-04 guidance).
         """
-        # Step 1: FX rates (needed for portfolio P&L conversion)
-        try:
-            fx_data = self.fetcher.fetch_fx_rate()
-            fx_rate_eurinr = fx_data.get("rate", 90.0)
-        except Exception as exc:
-            logger.error("BriefingOrchestrator: FX fetch failed: %s", exc)
+        holding_tickers = _load_holding_tickers(self.db_path)
+
+        # Phase 1 — independent market fetches in parallel (FX, indices, holding prices)
+        phase1_tasks: dict[str, Callable] = {
+            "fx_eur": lambda: self.fetcher.fetch_fx_rate(),
+            "fx_usd": lambda: self.fetcher.fetch_fx_rate("USDINR=X"),
+            "indices": lambda: self.fetcher.fetch_indices(),
+        }
+        if holding_tickers:
+            phase1_tasks["holding_prices"] = lambda: self.fetcher.fetch_holding_prices(holding_tickers)
+        phase1 = _run_parallel(phase1_tasks, max_workers=4)
+
+        fx_data = phase1.get("fx_eur") or {}
+        if not isinstance(fx_data, dict):
             fx_data = {}
-            fx_rate_eurinr = 90.0
+        fx_rate_eurinr = fx_data.get("rate", 90.0)
 
-        # Fetch USD/INR rate separately (T-05-02: wrapped in try/except, default 83.0 on failure)
-        try:
-            usdinr_data = self.fetcher.fetch_fx_rate("USDINR=X")
-            fx_rate_usdinr = usdinr_data.get("rate", 83.0)
-        except Exception as exc:
-            logger.error("BriefingOrchestrator: USDINR FX fetch failed: %s", exc)
-            fx_rate_usdinr = 83.0
+        usdinr_data = phase1.get("fx_usd") or {}
+        if not isinstance(usdinr_data, dict):
+            usdinr_data = {}
+        fx_rate_usdinr = usdinr_data.get("rate", 83.0)
 
-        # Step 2: Market indices
-        try:
-            indices_data = self.fetcher.fetch_indices()
-        except Exception as exc:
-            logger.error("BriefingOrchestrator: indices fetch failed: %s", exc)
+        indices_data = phase1.get("indices") or {}
+        if not isinstance(indices_data, dict):
             indices_data = {}
-
-        # Step 3: Fetch current prices for all holdings, then compute P&L
-        try:
-            conn = sqlite3.connect(self.db_path)
-            try:
-                rows = conn.execute(
-                    "SELECT DISTINCT ticker_yfinance FROM holdings WHERE ticker_yfinance IS NOT NULL"
-                ).fetchall()
-            finally:
-                conn.close()
-            holding_tickers = [r[0] for r in rows if r[0]]
-            if holding_tickers:
-                self.fetcher.fetch_holding_prices(holding_tickers)
-        except Exception as exc:
-            logger.warning("BriefingOrchestrator: holding price fetch failed: %s", exc)
 
         try:
             portfolio_data = get_portfolio_with_pl(
@@ -114,24 +156,9 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: portfolio fetch failed: %s", exc)
             portfolio_data = {}
 
-        # Step 3.5: Enrich holdings with daily_pct / day_change / day_change_pct
+        # Enrich holdings with daily_pct / day_change / day_change_pct (single DB query)
         try:
-            for holding in portfolio_data.get("holdings", []):
-                ticker = holding.get("ticker_yfinance") or holding.get("ticker")
-                if not ticker:
-                    holding["daily_pct"] = None
-                    holding["day_change"] = None
-                    holding["day_change_pct"] = None
-                else:
-                    pct = compute_daily_pct(self.db_path, ticker)
-                    holding["daily_pct"] = pct
-                    holding["day_change_pct"] = round(pct, 2) if pct is not None else None
-                    if pct is not None and holding.get("current_price") is not None:
-                        units = holding.get("quantity") or holding.get("units") or 0
-                        price_change = holding["current_price"] * pct / (100 + pct)
-                        holding["day_change"] = round(price_change * units, 2)
-                    else:
-                        holding["day_change"] = None
+            _enrich_holdings_daily_pct(self.db_path, portfolio_data)
         except Exception as exc:
             logger.warning("BriefingOrchestrator: daily_pct enrichment failed: %s", exc)
             for holding in portfolio_data.get("holdings", []):
@@ -139,20 +166,39 @@ class BriefingOrchestrator:
                 holding.setdefault("day_change", None)
                 holding.setdefault("day_change_pct", None)
 
-        # Step 4: Technical signals — fetch RSI/MACD/SMA for each holding.
-        # Use ticker_yfinance (e.g. "AAVAS.NS") rather than ticker_local ("AAVAS") so that
-        # yfinance can resolve the correct exchange. Holdings without a mapped ticker_yfinance
-        # (e.g. Trade Republic positions awaiting ISIN lookup) are skipped gracefully.
-        try:
-            signal_tickers = [
-                h["ticker_yfinance"]
-                for h in portfolio_data.get("holdings", [])
-                if h.get("ticker_yfinance")
-            ]
-            signals_data = self.fetcher.fetch_signals(signal_tickers)
-        except Exception as exc:
-            logger.error("BriefingOrchestrator: signals fetch failed: %s", exc)
+        signal_tickers = [
+            h["ticker_yfinance"]
+            for h in portfolio_data.get("holdings", [])
+            if h.get("ticker_yfinance")
+        ]
+        holding_names = [h.get("name", h["ticker"]) for h in portfolio_data.get("holdings", [])]
+
+        # Phase 2 — signals, news, analyst, benchmark are independent after portfolio is ready
+        phase2_tasks: dict[str, Callable] = {}
+        if signal_tickers:
+            phase2_tasks["signals"] = lambda: self.fetcher.fetch_signals(signal_tickers)
+        phase2_tasks["news"] = lambda: self.fetcher.fetch_news(holding_tickers, holding_names)
+        phase2_tasks["analyst"] = lambda: self.fetcher.fetch_analyst(holding_tickers)
+        phase2_tasks["benchmark"] = lambda: self.fetcher.fetch_benchmark(
+            portfolio_data.get("holdings", [])
+        )
+        phase2 = _run_parallel(phase2_tasks, max_workers=4)
+
+        signals_data = phase2.get("signals") or {}
+        if not isinstance(signals_data, dict):
             signals_data = {}
+
+        news_data = phase2.get("news")
+        if not isinstance(news_data, dict) or "holdings" not in news_data:
+            news_data = {"holdings": [], "india": [], "germany": [], "us": []}
+
+        analyst_data = phase2.get("analyst") or {}
+        if not isinstance(analyst_data, dict):
+            analyst_data = {}
+
+        benchmark_data = phase2.get("benchmark") or {}
+        if not isinstance(benchmark_data, dict):
+            benchmark_data = {}
 
         # Merge signals into each holding dict — keyed by ticker_yfinance
         for holding in portfolio_data.get("holdings", []):
@@ -165,22 +211,7 @@ class BriefingOrchestrator:
             holding["sma_50"] = sig.get("sma_50", None)
             holding["sma_200"] = sig.get("sma_200", None)
 
-        # Step 5: News — fetch holdings + macro tabs from NewsAPI
-        try:
-            holding_names = [h.get("name", h["ticker"]) for h in portfolio_data.get("holdings", [])]
-            news_data = self.fetcher.fetch_news(holding_tickers, holding_names)
-        except Exception as exc:
-            logger.error("BriefingOrchestrator: news fetch failed: %s", exc)
-            news_data = {"holdings": [], "india": [], "germany": [], "us": []}
-
-        # Step 6 — Analyst: fetch Finnhub consensus ratings and price targets
-        try:
-            analyst_data = self.fetcher.fetch_analyst(holding_tickers)
-        except Exception as exc:
-            logger.error("BriefingOrchestrator: analyst fetch failed: %s", exc)
-            analyst_data = {}
-
-        # Step 6.5: Alert evaluation — runs after analyst (analyst-change detection needs analyst_curr)
+        # Alert evaluation — runs after analyst (analyst-change detection needs analyst_curr)
         try:
             alert_settings = self._load_alert_settings()
             analyst_prev = self._load_yesterday_analyst()
@@ -205,12 +236,7 @@ class BriefingOrchestrator:
             logger.error("BriefingOrchestrator: AI synthesis failed: %s", exc)
             # holdings remain with signals already merged from step 4; rec/ai_narrative will be None
 
-        # Step 7.5: Benchmark comparison — price-window returns for portfolio, indices, regional buckets
-        try:
-            benchmark_data = self.fetcher.fetch_benchmark(portfolio_data.get("holdings", []))
-        except Exception as exc:
-            logger.error("BriefingOrchestrator: benchmark fetch failed: %s", exc)
-            benchmark_data = {}
+        # Step 7.5: Benchmark comparison — already fetched in Phase 2, reuse it
 
         # Step 8: Assemble briefing
         now_utc = datetime.now(timezone.utc)
@@ -315,44 +341,32 @@ class BriefingOrchestrator:
         Called on every app startup so the portfolio always shows current or last-close prices.
         Does NOT regenerate news, analyst ratings, or AI narratives.
         """
-        # Fetch FX rates
-        try:
-            fx_data = self.fetcher.fetch_fx_rate()
-            fx_rate_eurinr = fx_data.get("rate", 90.0)
-        except Exception as exc:
-            logger.warning("refresh_prices_only: FX (EURINR) fetch failed: %s", exc)
+        # Load holding tickers first (fast SQL)
+        holding_tickers = _load_holding_tickers(self.db_path)
+
+        # Phase 1: FX, indices, holding prices are independent I/O — run in parallel
+        refresh_tasks: dict[str, Callable] = {
+            "fx_eur": lambda: self.fetcher.fetch_fx_rate(),
+            "fx_usd": lambda: self.fetcher.fetch_fx_rate("USDINR=X"),
+            "indices": lambda: self.fetcher.fetch_indices(),
+        }
+        if holding_tickers:
+            refresh_tasks["holding_prices"] = lambda: self.fetcher.fetch_holding_prices(holding_tickers)
+        refresh_results = _run_parallel(refresh_tasks, max_workers=4)
+
+        fx_data = refresh_results.get("fx_eur") or {}
+        if not isinstance(fx_data, dict):
             fx_data = {}
-            fx_rate_eurinr = 90.0
+        fx_rate_eurinr = fx_data.get("rate", 90.0)
 
-        try:
-            usdinr_data = self.fetcher.fetch_fx_rate("USDINR=X")
-            fx_rate_usdinr = usdinr_data.get("rate", 83.0)
-        except Exception as exc:
-            logger.warning("refresh_prices_only: FX (USDINR) fetch failed: %s", exc)
-            fx_rate_usdinr = 83.0
+        usdinr_data = refresh_results.get("fx_usd") or {}
+        if not isinstance(usdinr_data, dict):
+            usdinr_data = {}
+        fx_rate_usdinr = usdinr_data.get("rate", 83.0)
 
-        # Fetch indices
-        try:
-            indices_data = self.fetcher.fetch_indices()
-        except Exception as exc:
-            logger.warning("refresh_prices_only: indices fetch failed: %s", exc)
+        indices_data = refresh_results.get("indices") or {}
+        if not isinstance(indices_data, dict):
             indices_data = None
-
-        # Fetch fresh holding prices
-        try:
-            conn = sqlite3.connect(self.db_path)
-            try:
-                rows = conn.execute(
-                    "SELECT DISTINCT ticker_yfinance FROM holdings WHERE ticker_yfinance IS NOT NULL"
-                ).fetchall()
-            finally:
-                conn.close()
-            holding_tickers = [r[0] for r in rows if r[0]]
-            if holding_tickers:
-                self.fetcher.fetch_holding_prices(holding_tickers)
-        except Exception as exc:
-            logger.warning("refresh_prices_only: holding price fetch failed: %s", exc)
-            holding_tickers = []
 
         # Recompute portfolio P&L with fresh prices
         try:

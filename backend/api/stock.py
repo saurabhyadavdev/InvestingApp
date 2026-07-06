@@ -6,6 +6,7 @@ Returns live signals, analyst data, and structured AI narrative (three sections)
 for a given ticker. All fields are nullable — never returns 500 for missing data.
 """
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Query
 import yfinance as yf
@@ -64,15 +65,27 @@ def _fetch_price_data(ticker: str) -> dict:
 async def get_stock_detail(ticker: str) -> StockDetailResponse:
     fetcher = DataFetcher(settings.DB_PATH)
 
-    signals = fetcher.fetch_signals([ticker]).get(ticker, {})
-    signals.update(_fetch_price_data(ticker))
-    analyst = fetcher.fetch_analyst([ticker]).get(ticker, {})
+    # Fetch signals, price data, analyst, and news in parallel (independent I/O)
+    def _fetch_all():
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            sig_fut = pool.submit(lambda: fetcher.fetch_signals([ticker]).get(ticker, {}))
+            price_fut = pool.submit(_fetch_price_data, ticker)
+            analyst_fut = pool.submit(lambda: fetcher.fetch_analyst([ticker]).get(ticker, {}))
+            news_fut = pool.submit(lambda: fetcher.fetch_news([ticker], [ticker]).get("holdings", [])[:3])
 
-    try:
-        news_headlines = fetcher.fetch_news([ticker], [ticker]).get("holdings", [])[:3]
-    except Exception as exc:
-        logger.warning("fetch_news failed for %s: %s", ticker, exc)
-        news_headlines = []
+            signals = sig_fut.result()
+            price_data = price_fut.result()
+            analyst = analyst_fut.result()
+            try:
+                news_headlines = news_fut.result()
+            except Exception as exc:
+                logger.warning("fetch_news failed for %s: %s", ticker, exc)
+                news_headlines = []
+
+        signals.update(price_data)
+        return signals, analyst, news_headlines
+
+    signals, analyst, news_headlines = _fetch_all()
 
     rec = rec_from_signals(signals, analyst)
 

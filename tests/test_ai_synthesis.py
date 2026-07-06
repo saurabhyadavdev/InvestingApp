@@ -83,12 +83,12 @@ def test_fetch_analyst_returns_empty_when_no_key(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_synthesise_holdings_no_api_key():
-    """synthesise_holdings sets ai_narrative to unavailable message when ANTHROPIC_API_KEY is empty."""
+    """synthesise_holdings sets ai_narrative to unavailable message when GROQ_API_KEY is empty."""
     from backend.core.ai_synthesis import synthesise_holdings
 
     portfolio_data = {
         "holdings": [
-            {"ticker": "RELIANCE.NS", "pl_pct": 5.0},
+            {"ticker_yfinance": "RELIANCE.NS", "ticker": "RELIANCE.NS", "pl_pct": 5.0},
         ]
     }
     signals_data = {"RELIANCE.NS": {"rsi_14": 50, "macd_histogram": 0.1}}
@@ -96,7 +96,7 @@ def test_synthesise_holdings_no_api_key():
     cash_by_broker = {}
 
     with patch("backend.core.ai_synthesis.settings") as mock_settings:
-        mock_settings.ANTHROPIC_API_KEY = ""
+        mock_settings.GROQ_API_KEY = ""
         result = synthesise_holdings(portfolio_data, signals_data, analyst_data, cash_by_broker)
 
     assert len(result) == 1

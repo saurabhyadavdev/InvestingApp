@@ -12,7 +12,7 @@ Security note (T-03-02, T-03-04):
 import json
 import logging
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -259,6 +259,33 @@ class DataFetcher:
         results: dict[str, dict] = {}
         conn = sqlite3.connect(self.db_path)
         try:
+            # Pre-fetch fast_info for all indices in parallel (blocking network calls)
+            fast_info_overlays: dict[str, dict] = {}
+            def _fetch_fast_info(sym: str) -> tuple:
+                try:
+                    fast = yf.Ticker(sym).fast_info
+                    try:
+                        live_last = fast["lastPrice"]
+                    except Exception:
+                        live_last = getattr(fast, "last_price", None)
+                    try:
+                        live_prev = fast["previousClose"]
+                    except Exception:
+                        live_prev = getattr(fast, "previous_close", None)
+                    if (
+                        live_last is not None and live_last == live_last
+                        and live_prev not in (None, 0) and live_prev == live_prev
+                    ):
+                        return sym, {"last": float(live_last), "prev": float(live_prev)}
+                except Exception as exc:
+                    logger.warning("fetch_indices: fast_info failed for %s: %s", sym, exc)
+                return sym, None
+
+            with ThreadPoolExecutor(max_workers=len(_INDICES)) as pool:
+                for sym, info in pool.map(_fetch_fast_info, _INDICES):
+                    if info is not None:
+                        fast_info_overlays[sym] = info
+
             for symbol in _INDICES:
                 meta = _INDEX_META[symbol]
                 try:
@@ -328,39 +355,17 @@ class DataFetcher:
                         entry["date"] = intraday_date
                         return True
 
-                    # Live overlay: yfinance daily index bars (notably NSE — Nifty/Sensex)
-                    # can lag by a full session, pinning the index to a stale prior close.
-                    # fast_info exposes the authoritative current last price + previous
-                    # close, so prefer it to reflect the live session.
-                    live_overlay_applied = False
-                    try:
-                        fast = yf.Ticker(symbol).fast_info
-                        try:
-                            live_last = fast["lastPrice"]
-                        except Exception:
-                            live_last = getattr(fast, "last_price", None)
-                        try:
-                            live_prev = fast["previousClose"]
-                        except Exception:
-                            live_prev = getattr(fast, "previous_close", None)
-                        if (
-                            live_last is not None and live_last == live_last
-                            and live_prev not in (None, 0) and live_prev == live_prev
-                        ):
-                            entry["close"] = float(live_last)
-                            entry["change_pct"] = round((live_last - live_prev) / live_prev * 100, 4)
-                            # Prefer the true session date from intraday; fall back to
-                            # the current trading day in the market's timezone.
-                            entry["date"] = (
-                                intraday_overlay.get("date") or _session_date_for_market(meta["market"])
-                                if intraday_overlay
-                                else _session_date_for_market(meta["market"])
-                            )
-                            live_overlay_applied = True
-                    except Exception as exc:
-                        logger.warning("fetch_indices: fast_info overlay failed for %s: %s", symbol, exc)
-
-                    if not live_overlay_applied:
+                    # Use pre-fetched fast_info overlay (parallelized above)
+                    fi = fast_info_overlays.get(symbol)
+                    if fi is not None:
+                        entry["close"] = fi["last"]
+                        entry["change_pct"] = round((fi["last"] - fi["prev"]) / fi["prev"] * 100, 4)
+                        entry["date"] = (
+                            intraday_overlay.get("date") or _session_date_for_market(meta["market"])
+                            if intraday_overlay
+                            else _session_date_for_market(meta["market"])
+                        )
+                    else:
                         apply_intraday_overlay()
 
                     results[symbol] = entry
@@ -578,77 +583,76 @@ class DataFetcher:
 
         results: dict = {}
         today_str = date.today().isoformat()
+
+        # Pre-extract Close series for all tickers (fast dict ops)
+        close_series: dict[str, object] = {}
+        for ticker in valid:
+            try:
+                if ("Close", ticker) in raw.columns:
+                    close_raw = raw.xs(ticker, axis=1, level=1)["Close"]
+                elif len(valid) == 1 and "Close" in raw.columns:
+                    close_raw = raw["Close"]
+                else:
+                    logger.warning("fetch_signals: no Close data for %s", ticker)
+                    continue
+                close_series[ticker] = close_raw.dropna()
+            except Exception as exc:
+                logger.warning("fetch_signals: extract failed for %s: %s", ticker, exc)
+
+        def _compute_one(ticker: str):
+            close = close_series.get(ticker)
+            if close is None or len(close) < 15:
+                return ticker, _null_signals()
+
+            sig = _null_signals()
+
+            try:
+                rsi_val = ta.momentum.RSIIndicator(close=close, window=14).rsi().iloc[-1]
+                sig["rsi_14"] = None if (rsi_val != rsi_val) else round(float(rsi_val), 2)
+            except Exception as exc:
+                logger.warning("fetch_signals: RSI failed for %s: %s", ticker, exc)
+
+            if len(close) >= 26:
+                try:
+                    macd_obj = ta.trend.MACD(close=close)
+                    macd_val = macd_obj.macd().iloc[-1]
+                    signal_val = macd_obj.macd_signal().iloc[-1]
+                    hist_val = macd_obj.macd_diff().iloc[-1]
+                    sig["macd"] = None if (macd_val != macd_val) else round(float(macd_val), 4)
+                    sig["macd_signal"] = None if (signal_val != signal_val) else round(float(signal_val), 4)
+                    sig["macd_histogram"] = None if (hist_val != hist_val) else round(float(hist_val), 4)
+                except Exception as exc:
+                    logger.warning("fetch_signals: MACD failed for %s: %s", ticker, exc)
+
+            if len(close) >= 50:
+                try:
+                    sma50_val = ta.trend.SMAIndicator(close=close, window=50).sma_indicator().iloc[-1]
+                    sig["sma_50"] = None if (sma50_val != sma50_val) else round(float(sma50_val), 2)
+                except Exception as exc:
+                    logger.warning("fetch_signals: SMA50 failed for %s: %s", ticker, exc)
+
+            if len(close) >= 200:
+                try:
+                    sma200_val = ta.trend.SMAIndicator(close=close, window=200).sma_indicator().iloc[-1]
+                    sig["sma_200"] = None if (sma200_val != sma200_val) else round(float(sma200_val), 2)
+                except Exception as exc:
+                    logger.warning("fetch_signals: SMA200 failed for %s: %s", ticker, exc)
+
+            return ticker, sig
+
+        # Parallelize signal computation across tickers (CPU-bound pandas ops)
+        to_compute = [t for t in valid if t in close_series]
+        with ThreadPoolExecutor(max_workers=min(16, len(to_compute))) as pool:
+            computed = list(pool.map(_compute_one, to_compute))
+
+        # Write results to DB (single connection, serial writes)
         conn = sqlite3.connect(self.db_path)
         try:
-            for ticker in valid:
-                try:
-                    # Extract single-symbol Close series — handle multi vs single layout
-                    if ("Close", ticker) in raw.columns:
-                        close_raw = raw.xs(ticker, axis=1, level=1)["Close"]
-                    elif len(valid) == 1 and "Close" in raw.columns:
-                        close_raw = raw["Close"]
-                    else:
-                        logger.warning("fetch_signals: no Close data for %s", ticker)
-                        results[ticker] = _null_signals()
-                        continue
-
-                    close = close_raw.dropna()
-
-                    if len(close) < 15:
-                        logger.warning(
-                            "fetch_signals: insufficient rows for %s (got %d, need >= 15)",
-                            ticker, len(close),
-                        )
-                        results[ticker] = _null_signals()
-                        _cache_signals(conn, ticker, today_str, _null_signals())
-                        continue
-
-                    sig = _null_signals()
-
-                    # RSI-14
-                    try:
-                        rsi_val = ta.momentum.RSIIndicator(close=close, window=14).rsi().iloc[-1]
-                        sig["rsi_14"] = None if (rsi_val != rsi_val) else round(float(rsi_val), 2)
-                    except Exception as exc:
-                        logger.warning("fetch_signals: RSI failed for %s: %s", ticker, exc)
-
-                    # MACD (needs >= 26 rows)
-                    if len(close) >= 26:
-                        try:
-                            macd_obj = ta.trend.MACD(close=close)
-                            macd_val = macd_obj.macd().iloc[-1]
-                            signal_val = macd_obj.macd_signal().iloc[-1]
-                            hist_val = macd_obj.macd_diff().iloc[-1]
-                            sig["macd"] = None if (macd_val != macd_val) else round(float(macd_val), 4)
-                            sig["macd_signal"] = None if (signal_val != signal_val) else round(float(signal_val), 4)
-                            sig["macd_histogram"] = None if (hist_val != hist_val) else round(float(hist_val), 4)
-                        except Exception as exc:
-                            logger.warning("fetch_signals: MACD failed for %s: %s", ticker, exc)
-
-                    # SMA-50 (needs >= 50 rows)
-                    if len(close) >= 50:
-                        try:
-                            sma50_val = ta.trend.SMAIndicator(close=close, window=50).sma_indicator().iloc[-1]
-                            sig["sma_50"] = None if (sma50_val != sma50_val) else round(float(sma50_val), 2)
-                        except Exception as exc:
-                            logger.warning("fetch_signals: SMA50 failed for %s: %s", ticker, exc)
-
-                    # SMA-200 (needs >= 200 rows)
-                    if len(close) >= 200:
-                        try:
-                            sma200_val = ta.trend.SMAIndicator(close=close, window=200).sma_indicator().iloc[-1]
-                            sig["sma_200"] = None if (sma200_val != sma200_val) else round(float(sma200_val), 2)
-                        except Exception as exc:
-                            logger.warning("fetch_signals: SMA200 failed for %s: %s", ticker, exc)
-
-                    results[ticker] = sig
-                    _cache_signals(conn, ticker, today_str, sig)
-
-                except Exception as exc:
-                    logger.warning("fetch_signals: failed for %s: %s", ticker, exc)
-                    continue
-        finally:
+            for ticker, sig in computed:
+                results[ticker] = sig
+                _cache_signals(conn, ticker, today_str, sig)
             conn.commit()
+        finally:
             conn.close()
 
         logger.info("fetch_signals: computed signals for %d/%d tickers", len(results), len(valid))
@@ -711,8 +715,9 @@ class DataFetcher:
         result = {}
         conn = sqlite3.connect(self.db_path)
         try:
+            # Phase 1: check caches synchronously
+            uncached_tabs = {}
             for tab, query in tab_queries.items():
-                # Check cache first
                 try:
                     cursor = conn.cursor()
                     cursor.execute(
@@ -723,41 +728,55 @@ class DataFetcher:
                     if cached_row:
                         result[tab] = json.loads(cached_row[0])
                         logger.info("fetch_news: cache hit for tab=%s", tab)
-                        continue
+                    else:
+                        uncached_tabs[tab] = query
                 except Exception as exc:
                     logger.warning("fetch_news: cache read failed for tab=%s: %s", tab, exc)
+                    uncached_tabs[tab] = query
 
-                # Fetch from NewsAPI
-                articles_list = []
-                try:
-                    response = newsapi.get_everything(
-                        q=query,
-                        from_param=from_date,
-                        language="en",
-                        sort_by="relevancy",
-                        page_size=5,
-                    )
-                    articles = response.get("articles", []) or []
-                    for article in articles[:5]:
-                        articles_list.append({
-                            "title": article.get("title", ""),
-                            "url": article.get("url", ""),
-                            "source": (article.get("source") or {}).get("name", ""),
-                            "time_ago": _format_time_ago(article.get("publishedAt", "")),
-                        })
-                except Exception as exc:
-                    logger.warning("fetch_news: NewsAPI call failed for tab=%s: %s", tab, exc)
+            # Phase 2: fetch uncached tabs from NewsAPI in parallel
+            if uncached_tabs:
+                articles_by_tab = {}
 
-                result[tab] = articles_list
+                def _fetch_tab(item):
+                    tab, query = item
+                    articles_list = []
+                    try:
+                        response = newsapi.get_everything(
+                            q=query,
+                            from_param=from_date,
+                            language="en",
+                            sort_by="relevancy",
+                            page_size=5,
+                        )
+                        articles = response.get("articles", []) or []
+                        for article in articles[:5]:
+                            articles_list.append({
+                                "title": article.get("title", ""),
+                                "url": article.get("url", ""),
+                                "source": (article.get("source") or {}).get("name", ""),
+                                "time_ago": _format_time_ago(article.get("publishedAt", "")),
+                            })
+                    except Exception as exc:
+                        logger.warning("fetch_news: NewsAPI call failed for tab=%s: %s", tab, exc)
+                    return tab, articles_list
 
-                # Cache result
-                try:
-                    conn.execute(
-                        "INSERT OR REPLACE INTO news_cache (query, date, articles_json) VALUES (?, ?, ?)",
-                        (query, today_str, json.dumps(articles_list)),
-                    )
-                except Exception as exc:
-                    logger.warning("fetch_news: cache write failed for tab=%s: %s", tab, exc)
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    futures = {pool.submit(_fetch_tab, item): item[0] for item in uncached_tabs.items()}
+                    for future in as_completed(futures):
+                        tab, articles_list = future.result()
+                        articles_by_tab[tab] = articles_list
+
+                # Phase 3: write results to cache synchronously
+                for tab, articles_list in uncached_tabs.items():
+                    result[tab] = articles_by_tab.get(tab, [])
+                    try:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO news_cache (query, date, articles_json) VALUES (?, ?, ?)",
+                            (tab_queries[tab], today_str, json.dumps(articles_by_tab.get(tab, []))),
+                        )
+                    except Exception as exc:
+                        logger.warning("fetch_news: cache write failed for tab=%s: %s", tab, exc)
 
             conn.commit()
         finally:
@@ -798,11 +817,12 @@ class DataFetcher:
         results: dict = {}
         conn = sqlite3.connect(self.db_path)
         try:
+            # Phase 1: synchronously check caches for all tickers
+            uncached = []
             for ticker in tickers:
                 if not ticker:
                     continue
                 try:
-                    # Check analyst_cache first
                     cursor = conn.cursor()
                     cursor.execute(
                         "SELECT rating, target_mean, num_analysts FROM analyst_cache WHERE symbol = ? AND date = ?",
@@ -816,8 +836,15 @@ class DataFetcher:
                             "num_analysts": cached_row[2],
                         }
                         logger.info("fetch_analyst: cache hit for %s", ticker)
-                        continue
+                    else:
+                        uncached.append(ticker)
+                except Exception as exc:
+                    logger.warning("fetch_analyst: cache check failed for %s: %s", ticker, exc)
+                    uncached.append(ticker)
 
+            # Phase 2: parallelize Finnhub + yfinance calls for uncached tickers
+            def _fetch_one_analyst(ticker: str) -> tuple:
+                try:
                     # Translate ticker to Finnhub symbol format
                     if ticker.endswith(".NS"):
                         finnhub_symbol = "NSE:" + ticker[:-3]
@@ -872,21 +899,26 @@ class DataFetcher:
                         except Exception as exc:
                             logger.warning("fetch_analyst: yfinance fallback failed for %s: %s", ticker, exc)
 
-                    # Cache to analyst_cache
-                    conn.execute(
-                        "INSERT OR REPLACE INTO analyst_cache (symbol, date, rating, target_mean, num_analysts) VALUES (?, ?, ?, ?, ?)",
-                        (ticker, today_str, rating, target_mean, num_analysts),
-                    )
-
-                    results[ticker] = {
-                        "rating": rating,
-                        "target_mean": target_mean,
-                        "num_analysts": num_analysts,
-                    }
-
+                    return ticker, {"rating": rating, "target_mean": target_mean, "num_analysts": num_analysts}
                 except Exception as exc:
                     logger.warning("fetch_analyst: failed for %s: %s", ticker, exc)
-                    continue
+                    return ticker, None
+
+            if uncached:
+                with ThreadPoolExecutor(max_workers=min(16, len(uncached))) as pool:
+                    futures = {pool.submit(_fetch_one_analyst, t): t for t in uncached}
+                    for future in as_completed(futures):
+                        ticker, data = future.result()
+                        if data is not None:
+                            results[ticker] = data
+                            # Cache to analyst_cache
+                            try:
+                                conn.execute(
+                                    "INSERT OR REPLACE INTO analyst_cache (symbol, date, rating, target_mean, num_analysts) VALUES (?, ?, ?, ?, ?)",
+                                    (ticker, today_str, data["rating"], data["target_mean"], data["num_analysts"]),
+                                )
+                            except Exception as exc:
+                                logger.warning("fetch_analyst: cache write failed for %s: %s", ticker, exc)
 
             conn.commit()
         finally:

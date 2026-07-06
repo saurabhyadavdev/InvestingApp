@@ -173,7 +173,7 @@ def test_refresh_endpoint_triggers_generation(test_client):
 
 
 def test_refresh_prices_only_serializes_concurrent_runs(db_path):
-    """Concurrent lightweight refreshes should not enter DataFetcher at the same time."""
+    """Concurrent lightweight refreshes should not run at the same time (_ORCHESTRATION_LOCK)."""
     from backend.core.briefing import BriefingOrchestrator
 
     conn = sqlite3.connect(db_path)
@@ -190,7 +190,8 @@ def test_refresh_prices_only_serializes_concurrent_runs(db_path):
     release_first = threading.Event()
     errors = []
 
-    def fake_fetch_fx_rate(self, pair="EURINR=X"):
+    # Use get_portfolio_with_pl as the gate — called exactly once per refresh (after _run_parallel)
+    def fake_get_portfolio_with_pl(*args, **kwargs):
         nonlocal entered
         with entered_lock:
             entered += 1
@@ -198,7 +199,7 @@ def test_refresh_prices_only_serializes_concurrent_runs(db_path):
         if current == 1:
             first_entered.set()
             release_first.wait(timeout=2)
-        return {"pair": pair.replace("=X", ""), "rate": 90.0, "low": 89.0, "high": 91.0}
+        return {"holdings": []}
 
     def run_refresh():
         try:
@@ -206,14 +207,15 @@ def test_refresh_prices_only_serializes_concurrent_runs(db_path):
         except Exception as exc:
             errors.append(exc)
 
-    with patch("backend.core.briefing.DataFetcher.fetch_fx_rate", fake_fetch_fx_rate), \
+    with patch("backend.core.briefing.DataFetcher.fetch_fx_rate",
+               return_value={"pair": "EURINR", "rate": 90.0, "low": 89.0, "high": 91.0}), \
          patch("backend.core.briefing.DataFetcher.fetch_indices", return_value={}), \
          patch("backend.core.briefing.DataFetcher.fetch_holding_prices", return_value={}), \
-         patch("backend.core.briefing.get_portfolio_with_pl", return_value={"holdings": []}):
+         patch("backend.core.briefing.get_portfolio_with_pl", fake_get_portfolio_with_pl):
         first = threading.Thread(target=run_refresh)
         second = threading.Thread(target=run_refresh)
         first.start()
-        assert first_entered.wait(timeout=1), "first refresh did not enter fetch_fx_rate"
+        assert first_entered.wait(timeout=1), "first refresh did not enter get_portfolio_with_pl"
 
         try:
             second.start()
@@ -225,7 +227,9 @@ def test_refresh_prices_only_serializes_concurrent_runs(db_path):
             first.join(timeout=2)
             second.join(timeout=2)
 
-        assert observed_entered == 1
+        assert observed_entered == 1, (
+            f"expected only 1 thread in get_portfolio_with_pl, got {observed_entered}"
+        )
 
     assert not first.is_alive()
     assert not second.is_alive()
